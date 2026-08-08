@@ -1,0 +1,253 @@
+<title>김재상 · AI 영상 개발자</title>
+<style>
+  :root {
+    --paper: #eee7d9;
+    --card: #fbf8f2;
+    --ink: #2b2622;
+    --ink-soft: #5c5346;
+    --accent: #1f6f5c;
+    --accent-soft: rgba(31, 111, 92, 0.12);
+    --accent-ink: #ffffff;
+    --rule: #d9d0bd;
+    --shadow: rgba(43, 38, 34, 0.14);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #1b1815;
+      --card: #221e19;
+      --ink: #ece4d6;
+      --ink-soft: #ab9f8c;
+      --accent: #55c3a6;
+      --accent-soft: rgba(85, 195, 166, 0.16);
+      --accent-ink: #12211c;
+      --rule: #38332a;
+      --shadow: rgba(0, 0, 0, 0.45);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #1b1815;
+    --card: #221e19;
+    --ink: #ece4d6;
+    --ink-soft: #ab9f8c;
+    --accent: #55c3a6;
+    --accent-soft: rgba(85, 195, 166, 0.16);
+    --accent-ink: #12211c;
+    --rule: #38332a;
+    --shadow: rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Noto Sans KR", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .page {
+    width: 100%;
+    max-width: 880px;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 28px 0;
+  }
+
+  .wordmark {
+    font-family: Georgia, "Iowan Old Style", "Noto Serif KR", serif;
+    font-size: 1.15rem;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 24px;
+  }
+
+  .nav-links a {
+    font-family: "SF Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+    font-size: 0.82rem;
+    letter-spacing: 0.03em;
+    color: var(--ink-soft);
+    text-decoration: none;
+    position: relative;
+    padding-bottom: 2px;
+  }
+
+  .nav-links a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 100%;
+    bottom: 0;
+    height: 1px;
+    background: var(--accent);
+    transition: right 0.2s ease;
+  }
+
+  .nav-links a:hover,
+  .nav-links a:focus-visible {
+    color: var(--accent);
+  }
+
+  .nav-links a:hover::after,
+  .nav-links a:focus-visible::after {
+    right: 0;
+  }
+
+  .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 40px 0 56px;
+  }
+
+  .eyebrow {
+    font-family: "SF Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.22em;
+    color: var(--accent);
+    margin: 0 0 20px;
+  }
+
+  .headline {
+    font-family: Georgia, "Iowan Old Style", "Noto Serif KR", serif;
+    font-size: clamp(2.4rem, 7vw, 4.2rem);
+    line-height: 1.14;
+    margin: 0 0 22px;
+    text-wrap: balance;
+    max-width: 14ch;
+  }
+
+  .tagline {
+    font-size: 1.1rem;
+    color: var(--ink-soft);
+    margin: 0 0 36px;
+  }
+
+  .tagline strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+
+  .cta {
+    font-family: "SF Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    padding: 15px 26px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+  }
+
+  .cta.primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .cta.ghost {
+    background: transparent;
+    color: var(--accent);
+  }
+
+  .cta:hover,
+  .cta:focus-visible {
+    transform: translateY(-2px);
+  }
+
+  .cta.primary:hover,
+  .cta.primary:focus-visible {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+
+  .cta.ghost:hover,
+  .cta.ghost:focus-visible {
+    background: var(--accent-soft);
+  }
+
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .filmstrip {
+    height: 14px;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--rule) 0,
+      var(--rule) 8px,
+      transparent 8px,
+      transparent 20px
+    );
+    background-position: center;
+    background-repeat: repeat-x;
+    background-size: auto 6px;
+  }
+
+  footer {
+    padding: 22px 0 32px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cta, .nav-links a::after { transition: none; }
+  }
+
+  @media (max-width: 480px) {
+    .headline { max-width: none; }
+    .nav { padding: 22px 0; }
+  }
+</style>
+
+<div class="page">
+  <header class="nav">
+    <span class="wordmark">김재상</span>
+    <nav class="nav-links">
+      <a href="https://claude.ai/code/artifact/106320cc-1eec-4141-a17b-d9165068d1f9">자기소개</a>
+      <a href="https://claude.ai/code/artifact/106320cc-1eec-4141-a17b-d9165068d1f9#contact">연락처</a>
+    </nav>
+  </header>
+
+  <main class="hero">
+    <p class="eyebrow">AI × VIDEO</p>
+    <h1 class="headline">AI와 영상을<br />연결합니다</h1>
+    <p class="tagline"><strong>김재상</strong> · AI 영상 개발자</p>
+    <div class="cta-row">
+      <a class="cta primary" href="https://claude.ai/code/artifact/106320cc-1eec-4141-a17b-d9165068d1f9">자기소개 보기</a>
+      <a class="cta ghost" href="https://claude.ai/code/artifact/106320cc-1eec-4141-a17b-d9165068d1f9#contact">연락하기</a>
+    </div>
+  </main>
+
+  <div class="filmstrip" aria-hidden="true"></div>
+  <footer>
+    <p>© 2026 김재상</p>
+  </footer>
+</div>
