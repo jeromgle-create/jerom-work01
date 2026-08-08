@@ -7,6 +7,12 @@ const projects = [
     href: "/tetris",
     external: false,
   },
+  {
+    name: "핑퐁",
+    description: "Canvas와 requestAnimationFrame으로 만든 AI 대전 핑퐁 게임.",
+    href: "/pingpong",
+    external: false,
+  },
 ];
 
 const contacts = [
