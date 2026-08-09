@@ -13,6 +13,12 @@ const projects = [
     href: "/pingpong",
     external: false,
   },
+  {
+    name: "볼링",
+    description: "조준과 커브를 조절해 스트라이크를 노리는 10프레임 볼링 게임.",
+    href: "/bowling",
+    external: false,
+  },
 ];
 
 const contacts = [
