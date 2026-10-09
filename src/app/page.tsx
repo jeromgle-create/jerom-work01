@@ -21,6 +21,16 @@ const projects = [
   },
 ];
 
+// 예시 데이터 — 실제 경력으로 교체 예정
+const careers = [
+  { period: "2022 — 현재", title: "ABC테크 · 프론트엔드 개발자" },
+  { period: "2020 — 2022", title: "XYZ스튜디오 · 주니어 개발자" },
+  { period: "2020", title: "OO대학교 컴퓨터공학과 졸업" },
+];
+
+// 예시 데이터 — 실제 기술 스택으로 교체 예정
+const skills = ["JavaScript", "TypeScript", "React", "Node.js", "CSS", "Git"];
+
 const contacts = [
   { label: "이메일", href: "mailto:jeromgle@gmail.com", value: "jeromgle@gmail.com" },
   { label: "GitHub", href: "https://github.com/jeromgle-create", value: "@jeromgle-create" },
@@ -32,9 +42,28 @@ export default function Home() {
       <main className="flex w-full max-w-2xl flex-1 flex-col gap-16 px-6 py-20 sm:px-10 sm:py-28">
         <section className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50">
-            제롬글
+            jeromprosper
           </h1>
-          <p className="text-lg text-zinc-600 dark:text-zinc-400">개발자</p>
+          <p className="text-lg text-zinc-600 dark:text-zinc-400">AI Video Creator</p>
+          <p className="mt-2 text-base text-zinc-700 dark:text-zinc-300">
+            AI와 영상을 연결하는 개발자입니다.
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            경력
+          </h2>
+          <ol className="flex flex-col gap-4 border-l border-zinc-200 pl-5 dark:border-zinc-800">
+            {careers.map((career) => (
+              <li key={career.title} className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
+                <span className="shrink-0 text-sm tabular-nums text-zinc-500 sm:w-28">
+                  {career.period}
+                </span>
+                <span className="text-zinc-900 dark:text-zinc-100">{career.title}</span>
+              </li>
+            ))}
+          </ol>
         </section>
 
         <section className="flex flex-col gap-4">
@@ -62,6 +91,22 @@ export default function Home() {
               </Link>
             ))}
           </div>
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            기술 스택
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {skills.map((skill) => (
+              <li
+                key={skill}
+                className="flex min-h-9 items-center rounded-full bg-zinc-200/70 px-3.5 text-sm font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                {skill}
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section className="flex flex-col gap-4">
