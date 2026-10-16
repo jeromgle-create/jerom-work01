@@ -39,7 +39,7 @@ async function callTour(
   params: Record<string, string | undefined>,
 ): Promise<{ items: RawItem[]; totalCount: number }> {
   const serviceKey = getServiceKey();
-  if (!serviceKey) throw new TourApiError("TOUR_API_KEY가 설정되지 않았습니다.");
+  if (!serviceKey) throw new TourApiError(missingKeyMessage());
 
   const query = new URLSearchParams({
     serviceKey,
@@ -88,6 +88,38 @@ async function callTour(
   const item = rawItems && typeof rawItems === "object" ? rawItems.item : undefined;
   const items = Array.isArray(item) ? item : item ? [item] : [];
   return { items, totalCount: Number(body.response?.body?.totalCount ?? items.length) };
+}
+
+// 인증키가 없을 때 어디에 등록해야 하는지 화면에서 바로 알 수 있게 안내한다.
+function missingKeyMessage(): string {
+  const where =
+    process.env.VERCEL_ENV === "production"
+      ? "Vercel의 Production 환경"
+      : process.env.VERCEL_ENV === "preview"
+        ? "Vercel의 Preview 환경"
+        : process.env.VERCEL
+          ? "Vercel"
+          : "내 컴퓨터(로컬 실행)";
+  const lines = [`TOUR_API_KEY가 설정되지 않았습니다. (지금 실행 위치: ${where})`];
+  if (process.env.VERCEL) {
+    lines.push(
+      `Vercel 프로젝트 Settings → Environment Variables에 TOUR_API_KEY를 ${
+        process.env.VERCEL_ENV === "preview" ? "Preview" : "Production"
+      } 환경으로 등록한 뒤 Redeploy 해 주세요.`,
+    );
+  } else {
+    lines.push("프로젝트 폴더의 .env.local 파일에 TOUR_API_KEY=인증키 를 넣고 다시 실행해 주세요.");
+  }
+  // 이름 오타(소문자, 앞뒤 공백 등)로 등록된 변수가 있으면 알려준다.
+  const lookalike = Object.keys(process.env).find(
+    (k) => k !== "TOUR_API_KEY" && k.replace(/[^a-z]/gi, "").toUpperCase() === "TOURAPIKEY",
+  );
+  if (lookalike) {
+    lines.push(`비슷한 이름 "${lookalike}"이(가) 있습니다. 이름을 정확히 TOUR_API_KEY로 바꿔 주세요.`);
+  } else if (process.env.TOUR_API_KEY !== undefined) {
+    lines.push("TOUR_API_KEY 값이 비어 있습니다. 인증키를 붙여 넣었는지 확인해 주세요.");
+  }
+  return lines.join(" ");
 }
 
 function explainError(msg: string): string {
