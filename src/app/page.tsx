@@ -1,6 +1,12 @@
 import Link from "next/link";
 
-const projects = [
+const projects: {
+  name: string;
+  description: string;
+  href: string;
+  external: boolean;
+  cta?: string;
+}[] = [
   {
     name: "테트리스",
     description: "React useReducer로 만든 클래식 테트리스 게임. 회전, 고스트 피스, 레벨업까지 구현.",
@@ -18,6 +24,13 @@ const projects = [
     description: "조준과 커브를 조절해 스트라이크를 노리는 10프레임 볼링 게임.",
     href: "/bowling",
     external: false,
+  },
+  {
+    name: "관광지·축제 찾기",
+    description: "한국관광공사 공공데이터로 지역별·내 주변 관광지와 다가오는 축제를 찾아보는 페이지.",
+    href: "/tour",
+    external: false,
+    cta: "둘러보기",
   },
 ];
 
@@ -57,7 +70,7 @@ export default function Home() {
                   {project.description}
                 </span>
                 <span className="mt-2 text-sm font-medium text-zinc-950 group-hover:underline dark:text-zinc-50">
-                  플레이하기 →
+                  {project.cta ?? "플레이하기"} →
                 </span>
               </Link>
             ))}
