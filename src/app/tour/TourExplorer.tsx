@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Place, Region } from "@/lib/tour";
 
 type Kind = "spot" | "festival";
@@ -32,9 +32,14 @@ export default function TourExplorer() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(0); // 불러오는 중인 페이지 (0 = 없음)
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
+  // "더 보기"는 화면의 현재 선택값이 아니라 마지막 검색 조건으로 이어서 불러온다.
+  const [lastQuery, setLastQuery] = useState("");
+  // 늦게 도착한 이전 응답이 최신 결과를 덮어쓰지 않도록 요청 번호를 센다.
+  const districtReq = useRef(0);
+  const searchReq = useRef(0);
 
   // 처음 열 때 시·도 목록을 불러온다.
   useEffect(() => {
@@ -47,10 +52,15 @@ export default function TourExplorer() {
     setRegn(code);
     setSigngu("");
     setDistricts([]);
+    const req = ++districtReq.current;
     if (!code) return;
     getJson<{ regions: Region[] }>(`/api/tour/regions?regn=${code}`)
-      .then((d) => setDistricts(d.regions))
-      .catch((e: Error) => setError(e.message));
+      .then((d) => {
+        if (req === districtReq.current) setDistricts(d.regions);
+      })
+      .catch((e: Error) => {
+        if (req === districtReq.current) setError(e.message);
+      });
   }
 
   function locate() {
@@ -73,40 +83,65 @@ export default function TourExplorer() {
     );
   }
 
-  async function search(nextPage = 1) {
-    const params = new URLSearchParams({ kind, page: String(nextPage) });
+  // 화면의 현재 선택값으로 검색 조건을 만든다.
+  function buildQuery(): string | null {
+    const params = new URLSearchParams({ kind });
     if (mode === "area") {
-      if (!regn) return setError("시·도를 먼저 선택해 주세요.");
+      if (!regn) {
+        setError("시·도를 먼저 선택해 주세요.");
+        return null;
+      }
       params.set("by", "area");
       params.set("regn", regn);
       if (signgu) params.set("signgu", signgu);
     } else {
-      if (!coords) return setError("먼저 '내 위치 가져오기'를 눌러 주세요.");
+      if (!coords) {
+        setError("먼저 '내 위치 가져오기'를 눌러 주세요.");
+        return null;
+      }
       params.set("by", "location");
       params.set("lat", String(coords.lat));
       params.set("lng", String(coords.lng));
       params.set("radius", String(radius));
     }
+    return params.toString();
+  }
 
-    setLoading(true);
+  async function fetchPage(query: string, nextPage: number) {
+    const req = ++searchReq.current;
+    setLoadingPage(nextPage);
     setError("");
     try {
       const data = await getJson<{ items: Place[]; totalCount: number }>(
-        `/api/tour/places?${params}`,
+        `/api/tour/places?${query}&page=${nextPage}`,
       );
-      setPlaces((prev) => (nextPage === 1 ? data.items : [...prev, ...data.items]));
+      if (req !== searchReq.current) return;
+      setPlaces((prev) => {
+        if (nextPage === 1) return data.items;
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...data.items.filter((p) => !seen.has(p.id))];
+      });
       setTotalCount(data.totalCount);
       setPage(nextPage);
+      setLastQuery(query);
       setSearched(true);
     } catch (e) {
-      setError((e as Error).message);
+      if (req === searchReq.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (req === searchReq.current) setLoadingPage(0);
     }
+  }
+
+  function search() {
+    const query = buildQuery();
+    if (query) fetchPage(query, 1);
   }
 
   // 조건이 바뀌면 이전 결과를 지운다.
   function resetResults() {
+    searchReq.current++; // 진행 중인 요청의 응답은 버린다.
+    setLoadingPage(0);
+    setLastQuery("");
     setPlaces([]);
     setTotalCount(0);
     setSearched(false);
@@ -189,11 +224,11 @@ export default function TourExplorer() {
 
         <button
           type="button"
-          onClick={() => search(1)}
-          disabled={!canSearch || loading}
+          onClick={search}
+          disabled={!canSearch || loadingPage > 0}
           className="min-h-11 rounded-lg bg-zinc-900 px-5 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         >
-          {loading && page === 1 ? "검색 중…" : "검색"}
+          {loadingPage === 1 ? "검색 중…" : "검색"}
         </button>
       </section>
 
@@ -215,14 +250,14 @@ export default function TourExplorer() {
         ))}
       </ul>
 
-      {places.length > 0 && places.length < totalCount && (
+      {lastQuery && places.length > 0 && places.length < totalCount && (
         <button
           type="button"
-          onClick={() => search(page + 1)}
-          disabled={loading}
+          onClick={() => fetchPage(lastQuery, page + 1)}
+          disabled={loadingPage > 0}
           className="mx-auto min-h-11 rounded-lg border border-zinc-300 px-6 text-sm font-medium text-zinc-800 hover:border-zinc-500 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200"
         >
-          {loading ? "불러오는 중…" : "더 보기"}
+          {loadingPage > 1 ? "불러오는 중…" : "더 보기"}
         </button>
       )}
     </div>

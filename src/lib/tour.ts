@@ -147,7 +147,7 @@ export async function getSpotsByArea(
     contentTypeId: CONTENT_TYPE.spot,
     lDongRegnCd: regnCd,
     lDongSignguCd: signguCd,
-    arrange: "Q", // 이미지 있는 항목을 수정일순으로
+    arrange: "C", // 수정일순 (사진 없는 관광지도 포함)
     numOfRows: "24",
     pageNo: String(page),
   });
@@ -172,6 +172,9 @@ export async function getSpotsNearby(
   return { items: items.map(toPlace), totalCount };
 }
 
+const FESTIVAL_PAGE_SIZE = 500;
+const FESTIVAL_MAX_PAGES = 6; // 최대 3,000건
+
 // 오늘부터 days일 안에 열리는(또는 진행 중인) 축제
 export async function getFestivals(opts: {
   regnCd?: string;
@@ -181,15 +184,21 @@ export async function getFestivals(opts: {
 }): Promise<PlaceList> {
   const today = kstDate(0);
   const until = kstDate(opts.days ?? 60);
-  const { items } = await callTour("searchFestival2", {
-    eventStartDate: today,
-    eventEndDate: until,
-    lDongRegnCd: opts.regnCd,
-    lDongSignguCd: opts.signguCd,
-    arrange: "A",
-    numOfRows: "500",
-    pageNo: "1",
-  });
+  // 축제는 서버에서 거르고 정렬하므로 해당 기간의 축제를 끝까지 받아온다.
+  const items: RawItem[] = [];
+  for (let page = 1; page <= FESTIVAL_MAX_PAGES; page++) {
+    const res = await callTour("searchFestival2", {
+      eventStartDate: today,
+      eventEndDate: until,
+      lDongRegnCd: opts.regnCd,
+      lDongSignguCd: opts.signguCd,
+      arrange: "A",
+      numOfRows: String(FESTIVAL_PAGE_SIZE),
+      pageNo: String(page),
+    });
+    items.push(...res.items);
+    if (res.items.length < FESTIVAL_PAGE_SIZE || items.length >= res.totalCount) break;
+  }
 
   let places = items
     .filter((raw) => {
