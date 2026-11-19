@@ -19,6 +19,12 @@ const projects = [
     href: "/bowling",
     external: false,
   },
+  {
+    name: "전국 탑 정보",
+    description: "전국GIS건물통합정보 기반으로 전국 탑의 위치와 속성을 지도에서 검색·필터링 (샘플 데이터).",
+    href: "/towers",
+    external: false,
+  },
 ];
 
 const contacts = [
