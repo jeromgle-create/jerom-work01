@@ -61,6 +61,8 @@ h2{font-size:1.1rem;margin:0 0 12px}
 .kid img{width:100%;aspect-ratio:1;object-fit:cover;object-position:center 30%;display:block}
 .kid input{width:100%;border:0;border-top:1px solid var(--line);background:var(--surface);padding:8px;text-align:center}
 .kid .del{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
+.kid .pick{position:absolute;top:8px;left:8px;width:22px;height:22px;accent-color:var(--accent)}
+.kid.off img{opacity:.3}
 .kid .acc{position:absolute;top:6px;left:6px;font-size:.75rem;background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:2px 6px}
 
 /* quiz */
@@ -158,9 +160,23 @@ select{border:1px solid var(--line);background:var(--surface);border-radius:8px;
       <div class="drop" id="drop">
         <div style="font-size:2rem">📷</div>
         <b>사진을 선택하거나 여기로 끌어 놓으세요</b>
-        <div class="muted" style="font-size:.9rem">여러 장 한 번에 가능 · 파일 이름 = 아이 이름 (앞의 번호는 자동 제거)</div>
+        <div class="muted" style="font-size:.9rem">여러 장 한 번에 가능 · 파일 이름 = 아이 이름 (앞의 번호는 자동 제거) · PDF 명단도 가능</div>
       </div>
-      <input type="file" id="fileIn" accept="image/*" multiple hidden>
+      <input type="file" id="fileIn" accept="image/*,.pdf,application/pdf" multiple hidden>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="pdfBtn">📄 PDF 명단에서 가져오기</button>
+        <span class="muted" style="font-size:.85rem">사진과 이름이 함께 있는 PDF에서 자동으로 짝지어 가져옵니다</span>
+      </div>
+      <input type="file" id="pdfIn" accept=".pdf,application/pdf" hidden>
+      <div id="pdfReview" class="hidden" style="margin-top:16px">
+        <h2 id="pdfTitle"></h2>
+        <p class="muted" style="font-size:.88rem;margin-top:0">이름이 틀린 곳은 고치고, 아이 사진이 아닌 것(로고·장식)은 체크를 해제하세요.</p>
+        <div class="kids" id="pdfGrid"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="pdfAdd">선택한 아이 추가</button>
+          <button class="btn" id="pdfCancel">취소</button>
+        </div>
+      </div>
       <div class="kids" id="kidGrid"></div>
     </div>
     <div class="panel">
@@ -373,10 +389,170 @@ function renderManage() {
 }
 const drop = $('#drop'), fileIn = $('#fileIn');
 drop.onclick = () => fileIn.click();
-fileIn.onchange = () => { addFiles(fileIn.files); fileIn.value = ''; };
+const routeFiles = files => {
+  const all = [...files], pdf = all.find(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+  if (pdf) importPdf(pdf);
+  const imgs = all.filter(f => f.type.startsWith('image/'));
+  if (imgs.length) addFiles(imgs);
+};
+fileIn.onchange = () => { routeFiles(fileIn.files); fileIn.value = ''; };
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
-drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); routeFiles(e.dataTransfer.files); };
+
+/* ---------- PDF 명단 가져오기 (pdf.js: 코드만 CDN에서 받고, PDF는 기기 안에서만 처리) ---------- */
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfjsP = null;
+const loadPdfjs = () => pdfjsP || (pdfjsP = new Promise((res, rej) => {
+  const s = el('script', { src: PDFJS + 'pdf.min.js' });
+  s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); };
+  s.onerror = () => { pdfjsP = null; rej(new Error('pdf.js를 불러오지 못했습니다. 인터넷 연결을 확인하세요.')); };
+  document.head.append(s);
+}));
+
+// 이름 정리: "1. 김민준", "김민준 (남)" 같은 군더더기 제거
+const cleanName = t => {
+  t = t.replace(/\s+/g, ' ').trim();
+  const STOP = /^(이름|성명|번호|학년|사진|원아|학생|명단|생일|생년월일)$/;
+  const h = (t.match(/[가-힣]{2,5}/g) || []).filter(x => !STOP.test(x));
+  if (h.length) return h[0];
+  if (/[가-힣]/.test(t)) return '';
+  return t.replace(/^[\d\s.)(#-]+/, '').trim();
+};
+
+async function extractPdf(file, onProgress) {
+  const lib = await loadPdfjs();
+  const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const { OPS, Util } = lib, out = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    onProgress(p, pdf.numPages);
+    const page = await pdf.getPage(p);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2400 / Math.max(base.width, base.height));
+    const vp = page.getViewport({ scale });
+    const pageArea = vp.width * vp.height;
+
+    // 1) 이미지 위치: 연산자 목록을 따라가며 변환 행렬 추적
+    const ops = await page.getOperatorList();
+    const boxes = []; let ctm = vp.transform.slice(); const stack = [];
+    const IMG = new Set([OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintJpegXObject, OPS.paintImageXObjectRepeat].filter(x => x != null));
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const fn = ops.fnArray[i], a = ops.argsArray[i];
+      if (fn === OPS.save) stack.push(ctm);
+      else if (fn === OPS.restore) ctm = stack.pop() || ctm;
+      else if (fn === OPS.transform) ctm = Util.transform(ctm, a);
+      else if (fn === OPS.paintFormXObjectBegin) { stack.push(ctm); if (a && a[0]) ctm = Util.transform(ctm, a[0]); }
+      else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() || ctm;
+      else if (IMG.has(fn)) {
+        const pts = [[0, 0], [1, 0], [0, 1], [1, 1]].map(q => Util.applyTransform(q, ctm));
+        const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+        const b = { x0: Math.max(0, Math.min(...xs)), y0: Math.max(0, Math.min(...ys)), x1: Math.min(vp.width, Math.max(...xs)), y1: Math.min(vp.height, Math.max(...ys)) };
+        const w = b.x1 - b.x0, h = b.y1 - b.y0;
+        if (w < 30 || h < 30 || w * h < pageArea * 0.002 || w * h > pageArea * 0.6) continue; // 아이콘·배경 제외
+        if (boxes.some(o => Math.abs(o.x0 - b.x0) < 3 && Math.abs(o.y0 - b.y0) < 3 && Math.abs(o.x1 - b.x1) < 3)) continue;
+        boxes.push(b);
+      }
+    }
+    if (!boxes.length) continue;
+
+    // 2) 텍스트를 줄 단위 덩어리로 묶기
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(t => t.str && t.str.trim()).map(t => {
+      const m = Util.transform(vp.transform, t.transform), fh = Math.hypot(m[2], m[3]) || 10;
+      return { s: t.str, x0: m[4], x1: m[4] + t.width * scale, y1: m[5], y0: m[5] - fh, fh };
+    }).sort((a, b) => a.y1 - b.y1 || a.x0 - b.x0);
+    const blocks = [];
+    for (const t of items) {
+      const bl = blocks.find(b => Math.abs(b.y1 - t.y1) < t.fh * 0.5 && t.x0 - b.x1 < t.fh * 1.2 && t.x0 >= b.x0 - t.fh);
+      if (bl) { bl.s += (t.x0 - bl.x1 > t.fh * 0.25 ? ' ' : '') + t.s; bl.x1 = Math.max(bl.x1, t.x1); bl.y0 = Math.min(bl.y0, t.y0); }
+      else blocks.push({ ...t });
+    }
+    const named = blocks.map(b => ({ ...b, name: cleanName(b.s) })).filter(b => /[가-힣A-Za-z]/.test(b.name));
+
+    // 3) 사진마다 가장 가까운 이름 덩어리(아래쪽 우선) 짝짓기 — 거리순 그리디, 중복 없이
+    //    페이지 전체에서 가장 흔한 방향(아래/오른쪽 등)을 찾아 그 방향을 우대
+    const pairs = [];
+    boxes.forEach((b, bi) => named.forEach((t, ti) => {
+      const cx = (t.x0 + t.x1) / 2, cy = (t.y0 + t.y1) / 2, bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+      let dir, d;
+      if (cy >= b.y1 && cx > b.x0 - bw * 0.5 && cx < b.x1 + bw * 0.5) { dir = 'below'; d = t.y0 - b.y1 + Math.abs(cx - (b.x0 + b.x1) / 2) * 0.5; }
+      else if (cy <= b.y0 && cx > b.x0 - bw * 0.5 && cx < b.x1 + bw * 0.5) { dir = 'above'; d = (b.y0 - t.y1) * 1.5 + Math.abs(cx - (b.x0 + b.x1) / 2) * 0.5; }
+      else if (cy > b.y0 && cy < b.y1 && t.x0 >= b.x1 - 2) { dir = 'right'; d = t.x0 - b.x1; }
+      else if (cy > b.y0 && cy < b.y1 && t.x1 <= b.x0 + 2) { dir = 'left'; d = (b.x0 - t.x1) * 1.3; }
+      else if (cy > b.y0 && cy < b.y1) { dir = 'over'; d = 10; }
+      else return;
+      if (d > Math.max(bw, bh) * 1.5) return;
+      pairs.push({ bi, ti, dir, d: Math.max(0, d) });
+    }));
+    const assign = bias => {
+      const ps = pairs.map(q => ({ ...q, s: q.d * (bias ? (q.dir === bias ? 0.5 : 2) : 1) })).sort((a, b) => a.s - b.s);
+      const usedB = new Set(), usedT = new Set(), res = {};
+      for (const q of ps) if (!usedB.has(q.bi) && !usedT.has(q.ti)) { usedB.add(q.bi); usedT.add(q.ti); res[q.bi] = q; }
+      return res;
+    };
+    const first = assign(null), votes = {};
+    Object.values(first).forEach(q => { votes[q.dir] = (votes[q.dir] || 0) + 1; });
+    const main = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
+    const nameOf = {};
+    Object.entries(assign(main)).forEach(([bi, q]) => { nameOf[bi] = named[q.ti].name; });
+
+    // 4) 페이지를 그린 뒤 사진 영역 잘라내기 (마스크·회전까지 보이는 그대로)
+    const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    const order = boxes.map((b, i) => i).sort((i, j) => (Math.abs(boxes[i].y0 - boxes[j].y0) < 20 ? boxes[i].x0 - boxes[j].x0 : boxes[i].y0 - boxes[j].y0));
+    for (const i of order) {
+      const b = boxes[i], w = b.x1 - b.x0, h = b.y1 - b.y0, s = Math.min(1, 600 / Math.max(w, h));
+      const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+      c.getContext('2d').drawImage(cv, b.x0, b.y0, w, h, 0, 0, c.width, c.height);
+      out.push({ img: c.toDataURL('image/jpeg', 0.85), name: nameOf[i] || '', page: p });
+    }
+    cv.width = cv.height = 0; page.cleanup();
+  }
+  await pdf.destroy();
+  return out;
+}
+
+let pdfItems = [];
+$('#pdfBtn').onclick = () => $('#pdfIn').click();
+$('#pdfIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importPdf(f); };
+async function importPdf(file) {
+  const rv = $('#pdfReview'), title = $('#pdfTitle');
+  rv.classList.remove('hidden'); $('#pdfGrid').replaceChildren(); $('#pdfAdd').disabled = true;
+  title.textContent = 'PDF 읽는 중…';
+  try {
+    pdfItems = await extractPdf(file, (p, n) => { title.textContent = `PDF 읽는 중… (${p}/${n}쪽)`; });
+  } catch (err) {
+    title.textContent = 'PDF를 읽지 못했습니다';
+    $('#pdfGrid').replaceChildren(el('p', { class: 'muted', text: err.message || String(err) }));
+    return;
+  }
+  if (!pdfItems.length) {
+    title.textContent = '사진을 찾지 못했습니다';
+    $('#pdfGrid').replaceChildren(el('p', { class: 'muted', text: '스캔본처럼 페이지 전체가 하나의 이미지인 PDF일 수 있습니다. 이 경우 사진을 따로 저장해 올려주세요.' }));
+    return;
+  }
+  const noName = pdfItems.filter(x => !x.name).length;
+  title.textContent = `사진 ${pdfItems.length}장 찾음` + (noName ? ` · 이름 못 찾음 ${noName}장` : '');
+  pdfItems.forEach(x => { x.on = !!x.name; });
+  $('#pdfGrid').replaceChildren(...pdfItems.map(x => {
+    const box = el('div', { class: 'kid' + (x.on ? '' : ' off') });
+    const cb = el('input', { type: 'checkbox', class: 'pick', 'aria-label': '추가 여부' });
+    cb.checked = x.on;
+    cb.onchange = () => { x.on = cb.checked; box.classList.toggle('off', !x.on); };
+    const inp = el('input', { value: x.name, placeholder: '이름 입력', 'aria-label': '이름' });
+    inp.oninput = () => { x.name = inp.value.trim(); if (x.name && !x.on) { x.on = cb.checked = true; box.classList.remove('off'); } };
+    box.append(el('img', { src: x.img, alt: x.name }), cb, inp);
+    return box;
+  }));
+  $('#pdfAdd').disabled = false;
+}
+$('#pdfAdd').onclick = async () => {
+  const sel = pdfItems.filter(x => x.on);
+  if (sel.some(x => !x.name)) { alert('체크된 사진 중 이름이 비어 있는 것이 있습니다.'); return; }
+  for (const x of sel) { const k = { id: uid(), name: x.name, img: x.img, right: 0, wrong: 0 }; kids.push(k); await dbPut(k); }
+  pdfItems = []; $('#pdfReview').classList.add('hidden'); renderManage();
+};
+$('#pdfCancel').onclick = () => { pdfItems = []; $('#pdfReview').classList.add('hidden'); };
 
 $('#exportBtn').onclick = () => {
   const data = JSON.stringify({ app: 'kid-name-game', v: 1, kids });
