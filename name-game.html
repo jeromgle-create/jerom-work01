@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>아이 이름 외우기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
 :root{
   --bg:#f6f5f2; --surface:#ffffff; --surface-2:#efede8; --text:#1f1d1a; --muted:#6b675f;
@@ -14,19 +15,19 @@
   :root:not([data-theme="light"]){
     --bg:#16171a; --surface:#202227; --surface-2:#2a2d33; --text:#ecebe8; --muted:#a3a09a;
     --line:#363941; --accent:#6b9cff; --accent-text:#0d1220; --ok:#4cc47f; --ok-bg:#16301f;
-    --bad:#ff7272; --bad-bg:#3a1c1c; --card-back:#3a5fb0; --shadow:0 1px 3px rgba(0,0,0,.4);
+    --bad:#ff7272; --bad-bg:#3a1c1c; --card-back:#3a5fb0; --shadow:0 1px 3px rgba(0,0,0,.4); color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#16171a; --surface:#202227; --surface-2:#2a2d33; --text:#ecebe8; --muted:#a3a09a;
   --line:#363941; --accent:#6b9cff; --accent-text:#0d1220; --ok:#4cc47f; --ok-bg:#16301f;
-  --bad:#ff7272; --bad-bg:#3a1c1c; --card-back:#3a5fb0; --shadow:0 1px 3px rgba(0,0,0,.4);
+  --bad:#ff7272; --bad-bg:#3a1c1c; --card-back:#3a5fb0; --shadow:0 1px 3px rgba(0,0,0,.4); color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;line-height:1.5;-webkit-tap-highlight-color:transparent}
 button,input,select{font:inherit;color:inherit}
-.wrap{max-width:880px;margin:0 auto;padding:16px}
+.wrap{max-width:880px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 header.top{display:flex;align-items:center;gap:8px;margin-bottom:16px}
 header.top h1{font-size:1.25rem;margin:0;flex:1;cursor:pointer}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;cursor:pointer;min-height:44px}
@@ -111,6 +112,10 @@ h2{font-size:1.1rem;margin:0 0 12px}
 .missed img{width:100%;aspect-ratio:1;object-fit:cover;object-position:center 30%;border-radius:12px}
 .big{font-size:2.4rem;font-weight:800;margin:4px 0}
 select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal .box{background:var(--surface);color:var(--text);border-radius:14px;padding:20px;max-width:380px;width:100%;box-shadow:var(--shadow)}
+.modal p{margin:0 0 16px;white-space:pre-line}
+.modal .row{justify-content:flex-end}
 @media (prefers-reduced-motion: reduce){ .flash .inner,.mcard .inner,.progress i{transition:none} }
 </style>
 </head>
@@ -274,6 +279,23 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
+/* 브라우저 기본 팝업(confirm/alert) 대신 쓰는 화면 안 대화상자 */
+function ask(msg, buttons = ['취소', '확인']) {
+  return new Promise(res => {
+    const done = i => { m.remove(); res(i); };
+    const m = el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' }, el('div', { class: 'box' }, [
+      el('p', { text: msg }),
+      el('div', { class: 'row' }, buttons.map((b, i) => el('button', {
+        class: 'btn' + (i === buttons.length - 1 ? ' primary' : ''), text: b, on: { click: () => done(i) }
+      })))
+    ]));
+    m.addEventListener('click', e => { if (e.target === m) done(-1); });
+    document.body.append(m); m.querySelector('.primary').focus();
+  });
+}
+const confirmBox = async (msg, ok = '확인') => (await ask(msg, ['취소', ok])) === 1;
+const notice = msg => ask(msg, ['확인']);
+
 /* ---------- IndexedDB (사진은 이 기기에만 저장) ---------- */
 const DB = 'kid-name-game', ST = 'kids';
 const dbP = new Promise(res => {
@@ -366,7 +388,7 @@ async function addFiles(files) {
       kids.push(k); await dbPut(k);
     } catch { fail++; }
   }
-  if (fail) alert(`${fail}개 파일은 읽지 못했습니다 (HEIC 등 브라우저가 지원하지 않는 형식일 수 있어요).`);
+  if (fail) notice(`${fail}개 파일은 읽지 못했습니다 (HEIC 등 브라우저가 지원하지 않는 형식일 수 있어요).`);
   renderManage();
 }
 function renderManage() {
@@ -378,7 +400,7 @@ function renderManage() {
       el('img', { src: k.img, alt: k.name }),
       a == null ? null : el('span', { class: 'acc', text: `${Math.round(a * 100)}%` }),
       el('button', { class: 'del', title: '삭제', 'aria-label': `${k.name} 삭제`, text: '✕', on: { click: async () => {
-        if (!confirm(`${k.name}을(를) 삭제할까요?`)) return;
+        if (!(await confirmBox(`${k.name}을(를) 삭제할까요?`, '삭제'))) return;
         kids = kids.filter(x => x.id !== k.id); await dbDel(k.id); renderManage();
       } } }),
       el('input', { value: k.name, 'aria-label': '이름', on: { change: async e => {
@@ -403,12 +425,22 @@ drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); routeFil
 /* ---------- PDF 명단 가져오기 (pdf.js: 코드만 CDN에서 받고, PDF는 기기 안에서만 처리) ---------- */
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 let pdfjsP = null;
-const loadPdfjs = () => pdfjsP || (pdfjsP = new Promise((res, rej) => {
-  const s = el('script', { src: PDFJS + 'pdf.min.js' });
-  s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); };
-  s.onerror = () => { pdfjsP = null; rej(new Error('pdf.js를 불러오지 못했습니다. 인터넷 연결을 확인하세요.')); };
-  document.head.append(s);
-}));
+// 워커 스크립트도 일반 <script>로 불러와 페이지 안에서 처리(별도 Worker 생성 없음).
+// 휴대폰 앱 미리보기·웹뷰처럼 Worker가 막힌 환경에서도 동작하도록.
+const loadScript = src => new Promise((res, rej) => {
+  const s = el('script', { src }); s.onload = res; s.onerror = rej; document.head.append(s);
+});
+const loadPdfjs = () => pdfjsP || (pdfjsP = (async () => {
+  try {
+    await loadScript(PDFJS + 'pdf.min.js');
+    await loadScript(PDFJS + 'pdf.worker.min.js');
+  } catch {
+    pdfjsP = null;
+    throw new Error('PDF 읽기 도구(pdf.js)를 불러오지 못했습니다. 인터넷 연결을 확인하세요. 앱 안의 파일 미리보기에서는 외부 도구가 막혀 있을 수 있으니, 크롬·사파리 같은 브라우저에서 열어 주세요.');
+  }
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+  return window.pdfjsLib;
+})());
 
 // 이름 정리: "1. 김민준", "김민준 (남)" 같은 군더더기 제거
 const cleanName = t => {
@@ -548,15 +580,25 @@ async function importPdf(file) {
 }
 $('#pdfAdd').onclick = async () => {
   const sel = pdfItems.filter(x => x.on);
-  if (sel.some(x => !x.name)) { alert('체크된 사진 중 이름이 비어 있는 것이 있습니다.'); return; }
+  if (sel.some(x => !x.name)) { notice('체크된 사진 중 이름이 비어 있는 것이 있습니다.'); return; }
   for (const x of sel) { const k = { id: uid(), name: x.name, img: x.img, right: 0, wrong: 0 }; kids.push(k); await dbPut(k); }
   pdfItems = []; $('#pdfReview').classList.add('hidden'); renderManage();
 };
 $('#pdfCancel').onclick = () => { pdfItems = []; $('#pdfReview').classList.add('hidden'); };
 
-$('#exportBtn').onclick = () => {
+// claude.ai 링크로 열면 저장 기능(downloads)을, 일반 파일로 열면 <a download>를 사용
+const dlP = window.claude && window.claude.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+$('#exportBtn').onclick = async () => {
+  if (!kids.length) return notice('백업할 아이가 없습니다.');
   const data = JSON.stringify({ app: 'kid-name-game', v: 1, kids });
-  const a = el('a', { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: `아이명단-백업-${new Date().toISOString().slice(0, 10)}.json` });
+  const filename = `아이명단-백업-${new Date().toISOString().slice(0, 10)}.json`;
+  const dl = await dlP;
+  if (dl) {
+    try { await dl.save({ filename, data: new Blob([data], { type: 'application/json' }) }); }
+    catch (e) { if (!e || e.code !== 'declined') notice('백업 파일을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'); }
+    return;
+  }
+  const a = el('a', { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: filename });
   document.body.append(a); a.click(); a.remove();
 };
 $('#importBtn').onclick = () => $('#importIn').click();
@@ -566,22 +608,26 @@ $('#importIn').onchange = async e => {
     const d = JSON.parse(await f.text());
     const list = (d.kids || []).filter(k => k && typeof k.name === 'string' && typeof k.img === 'string' && k.img.startsWith('data:image/'));
     if (!list.length) throw 0;
-    const replace = kids.length ? confirm(`${list.length}명을 불러옵니다.\n확인 = 기존 명단을 교체 / 취소 = 기존 명단에 추가`) : true;
+    let replace = true;
+    if (kids.length) {
+      const c = await ask(`${list.length}명을 불러옵니다. 지금 명단(${kids.length}명)은 어떻게 할까요?`, ['취소', '기존에 추가', '교체']);
+      if (c < 1) return; replace = c === 2;
+    }
     if (replace) { await dbClear(); kids = []; }
     for (const k of list) {
       const n = { id: uid(), name: k.name, img: k.img, right: +k.right || 0, wrong: +k.wrong || 0 };
       kids.push(n); await dbPut(n);
     }
     renderManage();
-  } catch { alert('올바른 백업 파일이 아닙니다.'); }
+  } catch { notice('올바른 백업 파일이 아닙니다.'); }
 };
 $('#resetStats').onclick = async () => {
-  if (!confirm('정답/오답 기록을 모두 지울까요? (사진과 이름은 유지)')) return;
+  if (!(await confirmBox('정답/오답 기록을 모두 지울까요? (사진과 이름은 유지)', '초기화'))) return;
   for (const k of kids) { k.right = 0; k.wrong = 0; await dbPut(k); }
   renderManage();
 };
 $('#deleteAll').onclick = async () => {
-  if (!confirm('등록된 아이를 모두 삭제할까요? 되돌릴 수 없습니다.')) return;
+  if (!(await confirmBox('등록된 아이를 모두 삭제할까요? 되돌릴 수 없습니다.', '전체 삭제'))) return;
   kids = []; await dbClear(); renderManage();
 };
 
