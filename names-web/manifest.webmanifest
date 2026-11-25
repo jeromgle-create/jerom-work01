@@ -1,0 +1,16 @@
+{
+  "name": "아이 이름 외우기",
+  "short_name": "이름 외우기",
+  "description": "아이 사진과 이름을 퀴즈·플래시카드·짝맞추기로 외우는 게임",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f2",
+  "theme_color": "#2f6fde",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

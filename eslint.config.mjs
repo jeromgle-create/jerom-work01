@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone static site for the name game (vendored pdf.js).
+    "names-web/**",
   ]),
 ]);
 
