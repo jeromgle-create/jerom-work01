@@ -2,62 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { input, labelEls, remoteTargets, selfPos, socket } from "./net";
-import { WORLD_HALF, type Player } from "./types";
+import type { Player } from "./types";
+import School, { resolveCollisions } from "./School";
 
 type Props = { selfId: string; selfStart: Player; players: Player[] };
 
 const SPEED = 6;
 const SEND_MS = 66;
-const PLAYER_R = 0.45;
-
-// Deterministic scenery so everyone sees the same world.
-function seeded(seed: number) {
-  return () => {
-    seed = (seed * 16807) % 2147483647;
-    return (seed - 1) / 2147483646;
-  };
-}
-type Obstacle = { kind: "tree" | "block"; x: number; z: number; r: number; h: number; color: string };
-const OBSTACLES: Obstacle[] = (() => {
-  const rnd = seeded(42);
-  const out: Obstacle[] = [];
-  const palette = ["#e8d7c3", "#c9d6e8", "#e8c9c9", "#d1e8c9"];
-  while (out.length < 34) {
-    const x = (rnd() - 0.5) * WORLD_HALF * 1.8;
-    const z = (rnd() - 0.5) * WORLD_HALF * 1.8;
-    if (Math.hypot(x, z) < 7) continue; // keep the plaza open
-    const tree = out.length % 3 !== 0;
-    const r = tree ? 0.6 : 1.4 + rnd() * 0.8;
-    if (out.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + r + 1)) continue;
-    out.push({
-      kind: tree ? "tree" : "block",
-      x,
-      z,
-      r,
-      h: tree ? 2 + rnd() * 1.5 : 1.5 + rnd() * 3,
-      color: tree ? "#3f9b5a" : palette[out.length % palette.length],
-    });
-  }
-  return out;
-})();
-
-const FOUNTAIN = { x: 0, z: 0, r: 1.4 };
-
-function resolveCollisions(pos: THREE.Vector3) {
-  for (const o of [FOUNTAIN, ...OBSTACLES]) {
-    const dx = pos.x - o.x;
-    const dz = pos.z - o.z;
-    const d = Math.hypot(dx, dz);
-    const min = o.r + PLAYER_R;
-    if (d < min && d > 1e-4) {
-      pos.x = o.x + (dx / d) * min;
-      pos.z = o.z + (dz / d) * min;
-    }
-  }
-  pos.x = THREE.MathUtils.clamp(pos.x, -WORLD_HALF, WORLD_HALF);
-  pos.z = THREE.MathUtils.clamp(pos.z, -WORLD_HALF, WORLD_HALF);
-}
-
 const tmp = new THREE.Vector3();
 /** Place a player's DOM label above their head in screen space. */
 function placeLabel(id: string, obj: THREE.Object3D, camera: THREE.Camera, w: number, h: number) {
@@ -113,7 +64,7 @@ function LocalPlayer({ start }: { start: Player }) {
   const ry = useRef(start.ry);
   const lastSent = useRef({ t: 0, x: NaN, z: NaN, ry: NaN });
   const camera = useThree((s) => s.camera);
-  const camOffset = useMemo(() => new THREE.Vector3(0, 9, 11), []);
+  const camOffset = useMemo(() => new THREE.Vector3(0, 10, 15), []); // pulled back so the school building and flag stay in view
 
   useEffect(() => {
     pos.current.set(start.x, 0, start.z);
@@ -147,7 +98,7 @@ function LocalPlayer({ start }: { start: Player }) {
     }
     const camTarget = pos.current.clone().add(camOffset);
     camera.position.lerp(camTarget, Math.min(1, dt * 5));
-    camera.lookAt(pos.current.x, 1, pos.current.z);
+    camera.lookAt(pos.current.x, 1.5, pos.current.z - 5); // aim a little ahead of the player
     if (g) placeLabel(start.id, g, camera, size.width, size.height);
 
     const now = performance.now();
@@ -191,48 +142,6 @@ function RemotePlayer({ player }: { player: Player }) {
   );
 }
 
-function Scenery({ dark }: { dark: boolean }) {
-  return (
-    <>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow>
-        <planeGeometry args={[WORLD_HALF * 2 + 4, WORLD_HALF * 2 + 4]} />
-        <meshStandardMaterial color={dark ? "#2c3a2f" : "#a9d18e"} />
-      </mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.01, 0]} receiveShadow>
-        <circleGeometry args={[6, 48]} />
-        <meshStandardMaterial color={dark ? "#4a4f57" : "#e7e1d6"} />
-      </mesh>
-      <mesh position={[0, 0.4, 0]} castShadow>
-        <cylinderGeometry args={[1.2, 1.4, 0.8, 32]} />
-        <meshStandardMaterial color={dark ? "#6b7380" : "#bfc6cf"} />
-      </mesh>
-      <mesh position={[0, 0.82, 0]}>
-        <cylinderGeometry args={[1, 1, 0.05, 32]} />
-        <meshStandardMaterial color="#5ab0ff" />
-      </mesh>
-      {OBSTACLES.map((o, i) =>
-        o.kind === "tree" ? (
-          <group key={i} position={[o.x, 0, o.z]}>
-            <mesh position={[0, 0.5, 0]} castShadow>
-              <cylinderGeometry args={[0.15, 0.2, 1, 8]} />
-              <meshStandardMaterial color="#7a5232" />
-            </mesh>
-            <mesh position={[0, 1 + o.h / 2, 0]} castShadow>
-              <coneGeometry args={[o.r + 0.2, o.h, 10]} />
-              <meshStandardMaterial color={o.color} />
-            </mesh>
-          </group>
-        ) : (
-          <mesh key={i} position={[o.x, o.h / 2, o.z]} castShadow receiveShadow>
-            <boxGeometry args={[o.r * 1.4, o.h, o.r * 1.4]} />
-            <meshStandardMaterial color={o.color} />
-          </mesh>
-        ),
-      )}
-    </>
-  );
-}
-
 export default function World({ selfId, selfStart, players }: Props) {
   const dark = useDark();
 
@@ -272,7 +181,7 @@ export default function World({ selfId, selfStart, players }: Props) {
         shadow-camera-top={30}
         shadow-camera-bottom={-30}
       />
-      <Scenery dark={dark} />
+      <School dark={dark} />
       <LocalPlayer start={selfStart} />
       {players
         .filter((p) => p.id !== selfId)
