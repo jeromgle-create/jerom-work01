@@ -1,9 +1,11 @@
 // Proximity voice chat over a WebRTC peer-to-peer mesh. Socket.IO only relays signaling.
 import { remoteTargets, selfPos, socket } from "./net";
+import { locationAt } from "./zones";
 
 const FULL_VOLUME_DIST = 3; // within this distance: full volume
 const SILENT_DIST = 16; // beyond this distance: silent
 const SPEAK_RMS = 0.02; // RMS level that counts as "speaking"
+const OTHER_ROOM_FACTOR = 0.3; // voices from another room (through a wall) are quieter
 const TICK_MS = 100;
 const DEFAULT_ICE: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302"] }];
 
@@ -216,12 +218,14 @@ export class VoiceChat {
     const ctx = this.ctx;
     if (!ctx) return;
     const next = new Set<string>();
+    const here = locationAt(selfPos.x, selfPos.z).key;
     for (const [id, p] of this.peers) {
       const t = remoteTargets.get(id);
       let vol = 0;
       if (t && !this.blocked.has(id)) {
         const d = Math.hypot(t.x - selfPos.x, t.z - selfPos.z);
         vol = clamp((SILENT_DIST - d) / (SILENT_DIST - FULL_VOLUME_DIST), 0, 1);
+        if (vol > 0 && locationAt(t.x, t.z).key !== here) vol *= OTHER_ROOM_FACTOR;
         p.pan?.pan.setTargetAtTime(clamp((t.x - selfPos.x) / 8, -1, 1) * 0.7, ctx.currentTime, 0.1);
       }
       p.volume = vol;

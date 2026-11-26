@@ -1,26 +1,13 @@
 // A generic Korean elementary school campus (fictional "한빛초등학교"), built from primitives.
 // Layout: camera looks north (-z). Main building on the north edge, dirt field in the middle,
 // playground east, gym and chin-up bars west, main gate on the south wall.
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { WORLD_HALF } from "./types";
+import { Box, BoxInstances, Pole, Sign, box, circle, pushOut, useTextTexture, type Collider, type V3 } from "./parts";
 
 export const SCHOOL_NAME = "한빛초등학교";
-const PLAYER_R = 0.45;
-
-// ---------- collisions ----------
-type Collider =
-  | { kind: "circle"; x: number; z: number; r: number }
-  | { kind: "box"; minX: number; maxX: number; minZ: number; maxZ: number };
-const box = (cx: number, cz: number, w: number, d: number): Collider => ({
-  kind: "box",
-  minX: cx - w / 2,
-  maxX: cx + w / 2,
-  minZ: cz - d / 2,
-  maxZ: cz + d / 2,
-});
-const circle = (x: number, z: number, r: number): Collider => ({ kind: "circle", x, z, r });
 
 // Scenery placement shared by rendering and collisions.
 const BUILDING = { x: 0, z: -19.5, w: 30, d: 6, floors: 4, floorH: 3 };
@@ -69,125 +56,9 @@ const COLLIDERS: Collider[] = [
 ];
 
 export function resolveCollisions(pos: THREE.Vector3) {
-  for (const c of COLLIDERS) {
-    if (c.kind === "circle") {
-      const dx = pos.x - c.x;
-      const dz = pos.z - c.z;
-      const d = Math.hypot(dx, dz);
-      const min = c.r + PLAYER_R;
-      if (d < min && d > 1e-4) {
-        pos.x = c.x + (dx / d) * min;
-        pos.z = c.z + (dz / d) * min;
-      }
-      continue;
-    }
-    const cx = THREE.MathUtils.clamp(pos.x, c.minX, c.maxX);
-    const cz = THREE.MathUtils.clamp(pos.z, c.minZ, c.maxZ);
-    const dx = pos.x - cx;
-    const dz = pos.z - cz;
-    const d = Math.hypot(dx, dz);
-    if (d > 1e-4) {
-      if (d < PLAYER_R) {
-        pos.x = cx + (dx / d) * PLAYER_R;
-        pos.z = cz + (dz / d) * PLAYER_R;
-      }
-    } else {
-      // Center ended up inside the box: push out through the nearest side.
-      const pushes = [
-        [c.minX - PLAYER_R - pos.x, 0],
-        [c.maxX + PLAYER_R - pos.x, 0],
-        [0, c.minZ - PLAYER_R - pos.z],
-        [0, c.maxZ + PLAYER_R - pos.z],
-      ];
-      pushes.sort((a, b) => Math.abs(a[0] + a[1]) - Math.abs(b[0] + b[1]));
-      pos.x += pushes[0][0];
-      pos.z += pushes[0][1];
-    }
-  }
+  pushOut(pos, COLLIDERS);
   pos.x = THREE.MathUtils.clamp(pos.x, -WORLD_HALF, WORLD_HALF);
   pos.z = THREE.MathUtils.clamp(pos.z, -WORLD_HALF, WORLD_HALF);
-}
-
-// ---------- helpers ----------
-type V3 = [number, number, number];
-
-function Box({ p, s, c, shadow = true }: { p: V3; s: V3; c: string; shadow?: boolean }) {
-  return (
-    <mesh position={p} castShadow={shadow} receiveShadow>
-      <boxGeometry args={s} />
-      <meshStandardMaterial color={c} />
-    </mesh>
-  );
-}
-
-/** Many identical boxes in one draw call. Each item: position + optional per-item size and color. */
-function BoxInstances({ items, shadow = true }: { items: { p: V3; s: V3; c: string }[]; shadow?: boolean }) {
-  const ref = useRef<THREE.InstancedMesh>(null);
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const color = new THREE.Color();
-    items.forEach((it, i) => {
-      m.compose(new THREE.Vector3(...it.p), q, new THREE.Vector3(...it.s));
-      mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, color.set(it.c));
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [items]);
-  return (
-    <instancedMesh ref={ref} args={[undefined, undefined, items.length]} castShadow={shadow} receiveShadow>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial />
-    </instancedMesh>
-  );
-}
-
-function Pole({ p, h, r = 0.06, c = "#9aa3ad" }: { p: [number, number]; h: number; r?: number; c?: string }) {
-  return (
-    <mesh position={[p[0], h / 2, p[1]]} castShadow>
-      <cylinderGeometry args={[r, r, h, 10]} />
-      <meshStandardMaterial color={c} metalness={0.3} roughness={0.5} />
-    </mesh>
-  );
-}
-
-function useTextTexture(text: string, bg: string, fg: string, w = 1024, h = 256) {
-  return useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = fg;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    let size = h * 0.62;
-    const font = (s: number) =>
-      `bold ${s}px "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", sans-serif`;
-    ctx.font = font(size);
-    while (ctx.measureText(text).width > w * 0.9 && size > 10) ctx.font = font((size -= 4));
-    ctx.fillText(text, w / 2, h / 2 + h * 0.03);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
-    return tex;
-  }, [text, bg, fg, w, h]);
-}
-
-type SignProps = { p: V3; size: [number, number]; text: string; bg: string; fg: string; ry?: number };
-function Sign({ p, size, text, bg, fg, ry = 0 }: SignProps) {
-  const tex = useTextTexture(text, bg, fg, 1024, Math.round((1024 * size[1]) / size[0]));
-  return (
-    <mesh position={p} rotation-y={ry}>
-      <planeGeometry args={size} />
-      <meshStandardMaterial map={tex} />
-    </mesh>
-  );
 }
 
 // ---------- pieces ----------
@@ -542,6 +413,18 @@ function Gate() {
   );
 }
 
+function EntryMat({ p, size, sign, text }: { p: [number, number]; size: [number, number]; sign: V3; text: string }) {
+  return (
+    <>
+      <mesh rotation-x={-Math.PI / 2} position={[p[0], 0.04, p[1]]}>
+        <planeGeometry args={size} />
+        <meshStandardMaterial color="#3bb273" transparent opacity={0.9} />
+      </mesh>
+      <Sign p={sign} size={[2.6, 0.5]} text={text} bg="#3bb273" fg="#ffffff" />
+    </>
+  );
+}
+
 export default function School({ dark }: { dark: boolean }) {
   return (
     <>
@@ -580,6 +463,9 @@ export default function School({ dark }: { dark: boolean }) {
       ))}
       <Walls dark={dark} />
       <Gate />
+      {/* entry mats: step on them to go inside */}
+      <EntryMat p={[0, -16.1]} size={[2.8, 0.7]} sign={[0, 3.35, -15.45]} text="▲ 현관 · 들어가기" />
+      <EntryMat p={[-18.25, 9]} size={[0.8, 1.6]} sign={[-17.3, 2.6, 9]} text="◀ 강당 들어가기" />
     </>
   );
 }
