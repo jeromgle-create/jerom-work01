@@ -5,16 +5,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
+import { SPAWN, ZONE_RECTS, locationKey } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
-// Walkable rectangles: campus + building floors 1-2 + auditorium. Must match ZONES in src/zones.ts.
-const ZONES = [
-  { cx: 0, cz: 0, hw: 24, hd: 24 },
-  { cx: 100, cz: 0, hw: 21, hd: 12 },
-  { cx: 200, cz: 0, hw: 21, hd: 12 },
-  { cx: 300, cz: 0, hw: 15, hd: 10 },
-];
 const TICK_MS = 66; // ~15 state broadcasts per second
 const CHAT_MAX = 200;
 const NAME_MAX = 16;
@@ -58,26 +52,14 @@ const players = new Map();
 const dirty = new Set();
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-/**
- * Coarse location key so walls separate conversations: campus, auditorium, and on each building
- * floor the corridor or one of six rooms. Must match the floor plan in src/zones.ts.
- */
-function locationKey(x, z) {
-  if (x < 60) return "outdoor";
-  if (x >= 250) return "hall";
-  const floor = x < 150 ? "f1" : "f2";
-  const lx = x - (x < 150 ? 100 : 200);
-  if (z > -2 && z < 2) return `${floor}:corridor`;
-  const col = lx < -7 ? 0 : lx < 7 ? 1 : 2;
-  return `${floor}:${z < 0 ? "n" : "s"}${col}`;
-}
+// locationKey (from shared/layout.js): walls separate conversations; open areas count as the corridor.
 
 /** Clamp a position into the nearest walkable zone. */
 function clampToZones(x, z) {
   let best = null;
-  for (const zn of ZONES) {
-    const cx = clamp(x, zn.cx - zn.hw, zn.cx + zn.hw);
-    const cz = clamp(z, zn.cz - zn.hd, zn.cz + zn.hd);
+  for (const zn of ZONE_RECTS) {
+    const cx = clamp(x, zn.minX, zn.maxX);
+    const cz = clamp(z, zn.minZ, zn.maxZ);
     const d = (cx - x) ** 2 + (cz - z) ** 2;
     if (!best || d < best.d) best = { x: cx, z: cz, d };
   }
@@ -101,15 +83,15 @@ io.on("connection", (socket) => {
     }
     const name = clean(payload?.name, NAME_MAX) || "손님";
     const color = /^#[0-9a-fA-F]{6}$/.test(payload?.color) ? payload.color : "#4f8cff";
-    // Spawn on a ring around the center of the school field (kept free of scenery).
+    // Spawn on a ring around the middle of the field (kept free of scenery).
     const angle = Math.random() * Math.PI * 2;
     const radius = 2.5 + Math.random() * 2.5;
     const player = {
       id: socket.id,
       name,
       color,
-      x: Math.cos(angle) * radius,
-      z: Math.sin(angle) * radius,
+      x: SPAWN.x + Math.cos(angle) * radius,
+      z: SPAWN.z + Math.sin(angle) * radius,
       ry: 0,
       lastChat: 0,
       voice: false,
