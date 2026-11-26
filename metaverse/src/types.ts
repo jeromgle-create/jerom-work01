@@ -10,4 +10,16 @@ export type Player = {
   voice?: boolean;
   muted?: boolean;
 };
-export type ChatMsg = { id?: string; name?: string; color?: string; text: string; ts: number; system?: boolean };
+export type ChatScope = "near" | "group" | "all";
+export type ChatMsg = {
+  id?: string;
+  name?: string;
+  color?: string;
+  text: string;
+  ts: number;
+  system?: boolean;
+  scope?: ChatScope;
+  groupId?: string;
+  recipients?: number; // near chat: how many people (including the sender) received it
+};
+export type Member = { id: string; name: string; color: string };

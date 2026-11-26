@@ -19,6 +19,13 @@ const TICK_MS = 66; // ~15 state broadcasts per second
 const CHAT_MAX = 200;
 const NAME_MAX = 16;
 const CHAT_COOLDOWN_MS = 700;
+// Proximity chat: "near" reaches everyone within NEAR_R of the sender; "group" reaches the sender's
+// meeting group (people chained within GROUP_JOIN_R; an existing link survives up to GROUP_KEEP_R).
+const NEAR_R = 3;
+const GROUP_JOIN_R = 3;
+const GROUP_KEEP_R = 4;
+const GROUP_TICK_MS = 300;
+const GROUP_DWELL_MS = 1500; // must stay close this long to form a meeting (ignores walk-bys and spawn overlap)
 const MAX_VOICE = Number(process.env.MAX_VOICE) || 8; // peer-to-peer mesh: keep small
 const SIGNAL_MAX = 20000; // bytes of JSON per WebRTC signaling message
 // ICE servers for WebRTC. Set ICE_SERVERS to a JSON array to add a TURN relay later without code changes.
@@ -46,11 +53,25 @@ if (existsSync(distDir)) {
   app.get("*", (_req, res) => res.sendFile(path.join(distDir, "index.html")));
 }
 
-/** @type {Map<string, {id:string,name:string,color:string,x:number,z:number,ry:number,lastChat:number,voice:boolean,muted:boolean}>} */
+/** @type {Map<string, {id:string,name:string,color:string,x:number,z:number,ry:number,lastChat:number,voice:boolean,muted:boolean,group:string|null}>} */
 const players = new Map();
 const dirty = new Set();
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+/**
+ * Coarse location key so walls separate conversations: campus, auditorium, and on each building
+ * floor the corridor or one of six rooms. Must match the floor plan in src/zones.ts.
+ */
+function locationKey(x, z) {
+  if (x < 60) return "outdoor";
+  if (x >= 250) return "hall";
+  const floor = x < 150 ? "f1" : "f2";
+  const lx = x - (x < 150 ? 100 : 200);
+  if (z > -2 && z < 2) return `${floor}:corridor`;
+  const col = lx < -7 ? 0 : lx < 7 ? 1 : 2;
+  return `${floor}:${z < 0 ? "n" : "s"}${col}`;
+}
+
 /** Clamp a position into the nearest walkable zone. */
 function clampToZones(x, z) {
   let best = null;
@@ -93,6 +114,7 @@ io.on("connection", (socket) => {
       lastChat: 0,
       voice: false,
       muted: false,
+      group: null,
     };
     players.set(socket.id, player);
     ack?.({ ok: true, selfId: socket.id, players: [...players.values()].map(publicPlayer) });
@@ -117,8 +139,23 @@ io.on("connection", (socket) => {
     if (now - p.lastChat < CHAT_COOLDOWN_MS) return;
     const text = clean(m?.text, CHAT_MAX);
     if (!text) return;
+    const scope = m?.scope === "near" || m?.scope === "group" ? m.scope : "all";
+    const msg = { id: p.id, name: p.name, color: p.color, text, ts: now, scope };
+    if (scope === "all") {
+      io.emit("chat", msg);
+    } else if (scope === "near") {
+      // Recipients are decided here, so clients never receive conversations they are not part of.
+      const here = locationKey(p.x, p.z);
+      const to = [...players.values()].filter(
+        (o) => Math.hypot(o.x - p.x, o.z - p.z) <= NEAR_R && locationKey(o.x, o.z) === here,
+      );
+      for (const o of to) io.to(o.id).emit("chat", { ...msg, recipients: to.length });
+    } else {
+      if (!p.group) return;
+      const gid = p.group;
+      for (const o of players.values()) if (o.group === gid) io.to(o.id).emit("chat", { ...msg, groupId: gid });
+    }
     p.lastChat = now;
-    io.emit("chat", { id: p.id, name: p.name, color: p.color, text, ts: now });
   });
 
   // --- Voice chat: the server only relays WebRTC signaling; audio flows peer to peer. ---
@@ -187,6 +224,99 @@ setInterval(() => {
   dirty.clear();
   io.volatile.emit("state", updates);
 }, TICK_MS);
+
+// --- Meeting groups: connected components of players standing close together. ---
+let groupSeq = 0;
+/** @type {Map<string, number>} "idA|idB" -> since when the pair has been within GROUP_JOIN_R */
+let nearSince = new Map();
+/** @type {Map<string, string>} group id -> signature of its member list last sent to clients */
+const groupSig = new Map();
+
+function updateGroups() {
+  const list = [...players.values()];
+  const keys = list.map((p) => locationKey(p.x, p.z));
+  const adj = list.map(() => []);
+  const now = Date.now();
+  const since = new Map();
+  for (let i = 0; i < list.length; i++)
+    for (let j = i + 1; j < list.length; j++) {
+      if (keys[i] !== keys[j]) continue;
+      const a = list[i];
+      const b = list[j];
+      const d = Math.hypot(a.x - b.x, a.z - b.z);
+      let join = false;
+      if (d <= GROUP_JOIN_R) {
+        const k = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+        const t = nearSince.get(k) ?? now;
+        since.set(k, t);
+        join = now - t >= GROUP_DWELL_MS;
+      }
+      const keep = a.group !== null && a.group === b.group && d <= GROUP_KEEP_R; // hysteresis
+      if (join || keep) {
+        adj[i].push(j);
+        adj[j].push(i);
+      }
+    }
+  nearSince = since;
+  // Connected components with 2+ members become groups.
+  const seen = new Array(list.length).fill(false);
+  const comps = [];
+  for (let i = 0; i < list.length; i++) {
+    if (seen[i] || adj[i].length === 0) continue;
+    const comp = [];
+    const stack = [i];
+    seen[i] = true;
+    while (stack.length) {
+      const k = stack.pop();
+      comp.push(list[k]);
+      for (const n of adj[k]) if (!seen[n]) (seen[n] = true), stack.push(n);
+    }
+    comps.push(comp);
+  }
+  // Keep a group's id when the component continues it: the old id held by most members wins,
+  // and each old id goes to at most one component (the largest overlap).
+  const claims = [];
+  comps.forEach((comp, ci) => {
+    const count = new Map();
+    for (const p of comp) if (p.group) count.set(p.group, (count.get(p.group) ?? 0) + 1);
+    for (const [gid, n] of count) claims.push({ ci, gid, n });
+  });
+  claims.sort((a, b) => b.n - a.n);
+  const compId = new Array(comps.length).fill(null);
+  const usedIds = new Set();
+  for (const c of claims) {
+    if (compId[c.ci] || usedIds.has(c.gid)) continue;
+    compId[c.ci] = c.gid;
+    usedIds.add(c.gid);
+  }
+  const next = new Map(); // player id -> group id
+  comps.forEach((comp, ci) => {
+    const gid = compId[ci] ?? `g${++groupSeq}`;
+    compId[ci] = gid;
+    for (const p of comp) next.set(p.id, gid);
+  });
+  // Apply and notify.
+  for (const p of list) {
+    const g = next.get(p.id) ?? null;
+    if (g !== p.group) {
+      if (g === null) io.to(p.id).emit("group:state", null);
+      p.group = g;
+    }
+  }
+  const live = new Set();
+  comps.forEach((comp, ci) => {
+    const gid = compId[ci];
+    live.add(gid);
+    const members = comp.map(({ id, name, color }) => ({ id, name, color })).sort((a, b) => a.name.localeCompare(b.name));
+    const sig = members.map((m) => m.id).join(",");
+    if (groupSig.get(gid) !== sig) {
+      groupSig.set(gid, sig);
+      for (const p of comp) io.to(p.id).emit("group:state", { id: gid, members });
+    }
+  });
+  for (const gid of [...groupSig.keys()]) if (!live.has(gid)) groupSig.delete(gid);
+}
+setInterval(updateGroups, GROUP_TICK_MS);
 
 httpServer.listen(PORT, () => {
   console.log(`metaverse server listening on :${PORT}`);
