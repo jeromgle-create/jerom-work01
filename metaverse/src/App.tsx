@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls } from "./net";
+import { socket, remoteTargets, labelEls, selfPos, debugTeleport } from "./net";
+import { locationAt } from "./zones";
 import type { ChatMsg, Player } from "./types";
 import World from "./World";
 import Chat from "./Chat";
@@ -38,6 +39,7 @@ export default function App() {
   const voiceRef = useRef<VoiceChat | null>(null);
   if (!voiceRef.current) voiceRef.current = new VoiceChat(setSpeaking);
   const voice = voiceRef.current;
+  const [place, setPlace] = useState("");
 
   const doJoin = useCallback(() => {
     const info = joinInfo.current;
@@ -162,8 +164,20 @@ export default function App() {
   const sendChat = (text: string) => socket.emit("chat", { text });
 
   useEffect(() => () => voiceRef.current?.teardown(), []);
+  // Current location for the HUD (e.g. "1층 · 과학실").
   useEffect(() => {
-    (window as unknown as { __mvVoice?: VoiceChat }).__mvVoice = voice; // inspected by automated tests
+    if (!joined) return;
+    const t = setInterval(() => setPlace(locationAt(selfPos.x, selfPos.z).label), 250);
+    return () => clearInterval(t);
+  }, [joined]);
+  useEffect(() => {
+    // Hooks for automated tests.
+    const w = window as unknown as { __mvVoice?: VoiceChat; __mvDebug?: object };
+    w.__mvVoice = voice;
+    w.__mvDebug = {
+      teleport: (x: number, z: number) => (debugTeleport.pending = { x, z }),
+      pos: () => ({ ...selfPos }),
+    };
   }, [voice]);
 
   const toggleMic = async () => {
@@ -229,7 +243,7 @@ export default function App() {
           <button className="primary" type="submit" disabled={!name.trim() || (joinInfo.current !== null && !joined)}>
             {joinInfo.current !== null && !joined ? "접속 중…" : "입장하기"}
           </button>
-          <p className="muted small">이동: WASD / 방향키 · 채팅: Enter · 모바일: 오른쪽 아래 조이스틱 · 음성: 🎙️ 버튼</p>
+          <p className="muted small">이동: WASD / 방향키 · 채팅: Enter · 모바일: 오른쪽 아래 조이스틱 · 음성: 🎙️ 버튼 · 초록 매트를 밟으면 건물 안으로</p>
         </form>
       </div>
     );
@@ -257,6 +271,11 @@ export default function App() {
           </div>
         ))}
       </div>
+      {place && (
+        <div className="hud-place" aria-live="polite">
+          📍 {place}
+        </div>
+      )}
       <div className="hud-top">
         <span className={connected ? "dot ok" : "dot"} />
         {connected ? `접속자 ${list.length}명` : "재연결 중…"}

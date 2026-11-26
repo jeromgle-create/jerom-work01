@@ -1,9 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { input, labelEls, remoteTargets, selfPos, socket } from "./net";
+import { debugTeleport, input, labelEls, remoteTargets, selfPos, socket } from "./net";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
+import Interior, { resolveInterior } from "./Interior";
+import { portalAt, zoneAt, type ZoneId } from "./zones";
+
+const PORTAL_COOLDOWN_MS = 800;
+// Outdoors: pulled back and aiming ahead so the building stays in view. Indoors: steep dollhouse view.
+const CAMERA = {
+  outdoor: { offset: new THREE.Vector3(0, 10, 15), ahead: 5, lookY: 1.5 },
+  indoor: { offset: new THREE.Vector3(0, 13, 8), ahead: 1, lookY: 0.5 },
+};
+const camFor = (zone: ZoneId) => (zone === "outdoor" ? CAMERA.outdoor : CAMERA.indoor);
+
+function collide(pos: THREE.Vector3) {
+  const zone = zoneAt(pos.x);
+  if (zone === "outdoor") resolveCollisions(pos);
+  else resolveInterior(zone, pos);
+}
 
 type Props = { selfId: string; selfStart: Player; players: Player[] };
 
@@ -58,18 +74,21 @@ function Avatar({ color }: { color: string }) {
   );
 }
 
-function LocalPlayer({ start }: { start: Player }) {
+function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => void }) {
   const group = useRef<THREE.Group>(null);
   const pos = useRef(new THREE.Vector3(start.x, 0, start.z));
   const ry = useRef(start.ry);
   const lastSent = useRef({ t: 0, x: NaN, z: NaN, ry: NaN });
   const camera = useThree((s) => s.camera);
-  const camOffset = useMemo(() => new THREE.Vector3(0, 10, 15), []); // pulled back so the school building and flag stay in view
+  const zone = useRef<ZoneId>(zoneAt(start.x));
+  const cooldownUntil = useRef(0);
 
   useEffect(() => {
     pos.current.set(start.x, 0, start.z);
-    camera.position.copy(pos.current).add(camOffset);
-  }, [start, camera, camOffset]);
+    zone.current = zoneAt(start.x);
+    onZone(zone.current);
+    camera.position.copy(pos.current).add(camFor(zone.current).offset);
+  }, [start, camera, onZone]);
 
   useFrame(({ size }, dt) => {
     const k = input.keys;
@@ -84,10 +103,32 @@ function LocalPlayer({ start }: { start: Player }) {
       const s = Math.min(len, 1) / len;
       pos.current.x += mx * s * SPEED * Math.min(dt, 0.1);
       pos.current.z += mz * s * SPEED * Math.min(dt, 0.1);
-      resolveCollisions(pos.current);
+      collide(pos.current);
       const target = Math.atan2(mx, mz);
       const diff = Math.atan2(Math.sin(target - ry.current), Math.cos(target - ry.current));
       ry.current += diff * Math.min(1, dt * 12);
+      // Doors and stairs: stepping on a portal mat moves the player to its destination.
+      const now = performance.now();
+      const portal = now > cooldownUntil.current ? portalAt(pos.current.x, pos.current.z) : undefined;
+      if (portal) {
+        cooldownUntil.current = now + PORTAL_COOLDOWN_MS;
+        pos.current.set(portal.to.x, 0, portal.to.z);
+        ry.current = portal.to.ry;
+        lastSent.current.t = 0; // send the new position right away
+      }
+    }
+    if (debugTeleport.pending) {
+      pos.current.set(debugTeleport.pending.x, 0, debugTeleport.pending.z);
+      collide(pos.current);
+      debugTeleport.pending = null;
+      lastSent.current.t = 0;
+    }
+    const z = zoneAt(pos.current.x);
+    const cam = camFor(z);
+    if (z !== zone.current) {
+      zone.current = z;
+      onZone(z);
+      camera.position.copy(pos.current).add(cam.offset); // cut, don't fly across the map
     }
     selfPos.x = pos.current.x;
     selfPos.z = pos.current.z;
@@ -96,16 +137,20 @@ function LocalPlayer({ start }: { start: Player }) {
       g.position.copy(pos.current);
       g.rotation.y = ry.current;
     }
-    const camTarget = pos.current.clone().add(camOffset);
+    const camTarget = pos.current.clone().add(cam.offset);
     camera.position.lerp(camTarget, Math.min(1, dt * 5));
-    camera.lookAt(pos.current.x, 1.5, pos.current.z - 5); // aim a little ahead of the player
+    camera.lookAt(pos.current.x, cam.lookY, pos.current.z - cam.ahead);
     if (g) placeLabel(start.id, g, camera, size.width, size.height);
 
     const now = performance.now();
     const ls = lastSent.current;
     if (
       now - ls.t > SEND_MS &&
-      (Math.abs(ls.x - pos.current.x) > 0.01 || Math.abs(ls.z - pos.current.z) > 0.01 || Math.abs(ls.ry - ry.current) > 0.02 || Number.isNaN(ls.x))
+      (ls.t === 0 ||
+        Math.abs(ls.x - pos.current.x) > 0.01 ||
+        Math.abs(ls.z - pos.current.z) > 0.01 ||
+        Math.abs(ls.ry - ry.current) > 0.02 ||
+        Number.isNaN(ls.x))
     ) {
       socket.emit("move", { x: pos.current.x, z: pos.current.z, ry: ry.current });
       lastSent.current = { t: now, x: pos.current.x, z: pos.current.z, ry: ry.current };
@@ -129,8 +174,12 @@ function RemotePlayer({ player }: { player: Player }) {
     const g = group.current;
     if (!t || !g) return;
     const a = Math.min(1, dt * 10);
-    g.position.x += (t.x - g.position.x) * a;
-    g.position.z += (t.z - g.position.z) * a;
+    if (Math.hypot(t.x - g.position.x, t.z - g.position.z) > 8) {
+      g.position.set(t.x, 0, t.z); // went through a door or stairs: snap instead of gliding across the map
+    } else {
+      g.position.x += (t.x - g.position.x) * a;
+      g.position.z += (t.z - g.position.z) * a;
+    }
     const diff = Math.atan2(Math.sin(t.ry - g.rotation.y), Math.cos(t.ry - g.rotation.y));
     g.rotation.y += diff * a;
     placeLabel(player.id, g, camera, size.width, size.height);
@@ -144,6 +193,9 @@ function RemotePlayer({ player }: { player: Player }) {
 
 export default function World({ selfId, selfStart, players }: Props) {
   const dark = useDark();
+  const [zone, setZone] = useState<ZoneId>("outdoor");
+  const indoor = zone !== "outdoor";
+  const bg = indoor ? (dark ? "#1b1d22" : "#3a3f47") : dark ? "#141a24" : "#cfe8ff";
 
   useEffect(() => {
     const typing = (e: KeyboardEvent) => {
@@ -168,8 +220,8 @@ export default function World({ selfId, selfStart, players }: Props) {
 
   return (
     <Canvas shadows camera={{ fov: 50, position: [0, 9, 11] }} dpr={[1, 2]} className="canvas">
-      <color attach="background" args={[dark ? "#141a24" : "#cfe8ff"]} />
-      <fog attach="fog" args={[dark ? "#141a24" : "#cfe8ff", 25, 60]} />
+      <color attach="background" args={[bg]} />
+      <fog attach="fog" args={[bg, 25, 60]} />
       <hemisphereLight args={[dark ? "#8090b0" : "#ffffff", dark ? "#202820" : "#88aa77", dark ? 0.6 : 0.9]} />
       <directionalLight
         position={[12, 20, 8]}
@@ -181,8 +233,8 @@ export default function World({ selfId, selfStart, players }: Props) {
         shadow-camera-top={30}
         shadow-camera-bottom={-30}
       />
-      <School dark={dark} />
-      <LocalPlayer start={selfStart} />
+      {indoor ? <Interior zone={zone as Exclude<ZoneId, "outdoor">} dark={dark} /> : <School dark={dark} />}
+      <LocalPlayer start={selfStart} onZone={setZone} />
       {players
         .filter((p) => p.id !== selfId)
         .map((p) => (

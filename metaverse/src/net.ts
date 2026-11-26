@@ -17,3 +17,6 @@ export const labelEls = new Map<string, HTMLDivElement>();
 
 /** Local player's current position (read by proximity voice). */
 export const selfPos = { x: 0, z: 0 };
+
+/** Test hook: a pending teleport consumed by the local player (positions are still clamped by the server). */
+export const debugTeleport: { pending: { x: number; z: number } | null } = { pending: null };

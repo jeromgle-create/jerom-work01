@@ -8,7 +8,13 @@ import { Server } from "socket.io";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
-const WORLD_HALF = 24; // must match client WORLD_HALF
+// Walkable rectangles: campus + building floors 1-2 + auditorium. Must match ZONES in src/zones.ts.
+const ZONES = [
+  { cx: 0, cz: 0, hw: 24, hd: 24 },
+  { cx: 100, cz: 0, hw: 21, hd: 12 },
+  { cx: 200, cz: 0, hw: 21, hd: 12 },
+  { cx: 300, cz: 0, hw: 15, hd: 10 },
+];
 const TICK_MS = 66; // ~15 state broadcasts per second
 const CHAT_MAX = 200;
 const NAME_MAX = 16;
@@ -45,6 +51,17 @@ const players = new Map();
 const dirty = new Set();
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+/** Clamp a position into the nearest walkable zone. */
+function clampToZones(x, z) {
+  let best = null;
+  for (const zn of ZONES) {
+    const cx = clamp(x, zn.cx - zn.hw, zn.cx + zn.hw);
+    const cz = clamp(z, zn.cz - zn.hd, zn.cz + zn.hd);
+    const d = (cx - x) ** 2 + (cz - z) ** 2;
+    if (!best || d < best.d) best = { x: cx, z: cz, d };
+  }
+  return best;
+}
 const num = (v, fallback = 0) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 const clean = (s, max) =>
   String(s ?? "")
@@ -86,8 +103,9 @@ io.on("connection", (socket) => {
   socket.on("move", (m) => {
     const p = players.get(socket.id);
     if (!p) return;
-    p.x = clamp(num(m?.x, p.x), -WORLD_HALF, WORLD_HALF);
-    p.z = clamp(num(m?.z, p.z), -WORLD_HALF, WORLD_HALF);
+    const c = clampToZones(num(m?.x, p.x), num(m?.z, p.z));
+    p.x = c.x;
+    p.z = c.z;
     p.ry = num(m?.ry, p.ry);
     dirty.add(socket.id);
   });
