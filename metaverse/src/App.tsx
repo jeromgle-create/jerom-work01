@@ -4,9 +4,11 @@ import type { ChatMsg, Player } from "./types";
 import World from "./World";
 import Chat from "./Chat";
 import Joystick from "./Joystick";
+import { VoiceChat } from "./voice";
 
 type JoinAck = { ok: true; selfId: string; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
+type VoiceMode = "off" | "joining" | "live" | "muted";
 
 const COLORS = ["#4f8cff", "#ff6b6b", "#ffb84d", "#3ecf8e", "#b57cff", "#ff7ac6", "#2bc4d8", "#8a8f98"];
 const BUBBLE_MS = 5000;
@@ -29,6 +31,13 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [bubbles, setBubbles] = useState<Record<string, Bubble>>({});
   const joinInfo = useRef<{ name: string; color: string } | null>(null);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("off");
+  const [voiceError, setVoiceError] = useState("");
+  const [speaking, setSpeaking] = useState<Set<string>>(() => new Set());
+  const [blocked, setBlocked] = useState<Set<string>>(() => new Set());
+  const voiceRef = useRef<VoiceChat | null>(null);
+  if (!voiceRef.current) voiceRef.current = new VoiceChat(setSpeaking);
+  const voice = voiceRef.current;
 
   const doJoin = useCallback(() => {
     const info = joinInfo.current;
@@ -48,6 +57,7 @@ export default function App() {
         if (p.id !== ack.selfId) remoteTargets.set(p.id, { x: p.x, z: p.z, ry: p.ry });
       }
       setSelfId(ack.selfId);
+      voiceRef.current!.selfId = ack.selfId;
       setSelfStart(map[ack.selfId]);
       setPlayers(map);
       setJoined(true);
@@ -59,13 +69,21 @@ export default function App() {
       setConnected(true);
       doJoin(); // also re-joins after an automatic reconnect (socket id changes)
     };
-    const onDisconnect = () => setConnected(false);
+    const onDisconnect = () => {
+      setConnected(false);
+      // Peer connections are tied to the old socket id; the user can rejoin voice after reconnecting.
+      if (voiceRef.current?.active) {
+        voiceRef.current.teardown();
+        setVoiceMode("off");
+      }
+    };
     const onJoined = (p: Player) => {
       remoteTargets.set(p.id, { x: p.x, z: p.z, ry: p.ry });
       setPlayers((prev) => ({ ...prev, [p.id]: p }));
     };
     const onLeft = (id: string) => {
       remoteTargets.delete(id);
+      voiceRef.current?.closePeer(id);
       setPlayers((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -89,6 +107,10 @@ export default function App() {
       if (m.id) setBubbles((prev) => ({ ...prev, [m.id!]: { text: m.text, until: Date.now() + BUBBLE_MS } }));
     };
     const onSystem = (m: ChatMsg) => pushMsg({ ...m, system: true });
+    const onVoiceState = (v: { id: string; voice: boolean; muted: boolean }) => {
+      if (!v.voice) voiceRef.current?.closePeer(v.id);
+      setPlayers((prev) => (prev[v.id] ? { ...prev, [v.id]: { ...prev[v.id], voice: v.voice, muted: v.muted } } : prev));
+    };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -97,7 +119,9 @@ export default function App() {
     socket.on("state", onState);
     socket.on("chat", onChat);
     socket.on("system", onSystem);
+    socket.on("voice:state", onVoiceState);
     return () => {
+      socket.off("voice:state", onVoiceState);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("playerJoined", onJoined);
@@ -137,6 +161,40 @@ export default function App() {
 
   const sendChat = (text: string) => socket.emit("chat", { text });
 
+  useEffect(() => () => voiceRef.current?.teardown(), []);
+  useEffect(() => {
+    (window as unknown as { __mvVoice?: VoiceChat }).__mvVoice = voice; // inspected by automated tests
+  }, [voice]);
+
+  const toggleMic = async () => {
+    setVoiceError("");
+    if (voiceMode === "off") {
+      setVoiceMode("joining");
+      try {
+        await voice.join();
+        setVoiceMode("live");
+      } catch (e) {
+        setVoiceMode("off");
+        setVoiceError((e as Error).message);
+      }
+    } else if (voiceMode === "live") {
+      voice.setMic(false);
+      setVoiceMode("muted");
+    } else if (voiceMode === "muted") {
+      voice.setMic(true);
+      setVoiceMode("live");
+    }
+  };
+  const leaveVoice = () => {
+    voice.leave();
+    setVoiceMode("off");
+  };
+  const toggleBlock = (id: string) => {
+    if (voice.blocked.has(id)) voice.blocked.delete(id);
+    else voice.blocked.add(id);
+    setBlocked(new Set(voice.blocked));
+  };
+
   if (!joined || !selfStart) {
     return (
       <div className="join">
@@ -171,7 +229,7 @@ export default function App() {
           <button className="primary" type="submit" disabled={!name.trim() || (joinInfo.current !== null && !joined)}>
             {joinInfo.current !== null && !joined ? "접속 중…" : "입장하기"}
           </button>
-          <p className="muted small">이동: WASD / 방향키 · 채팅: Enter · 모바일: 왼쪽 아래 조이스틱</p>
+          <p className="muted small">이동: WASD / 방향키 · 채팅: Enter · 모바일: 오른쪽 아래 조이스틱 · 음성: 🎙️ 버튼</p>
         </form>
       </div>
     );
@@ -192,7 +250,10 @@ export default function App() {
             }}
           >
             {bubbles[p.id] && <div className="bubble">{bubbles[p.id].text}</div>}
-            <div className={p.id === selfId ? "name self" : "name"}>{p.name}</div>
+            <div className={`name${p.id === selfId ? " self" : ""}${speaking.has(p.id) ? " speaking" : ""}`}>
+              {p.voice && (speaking.has(p.id) ? "🔊 " : p.muted ? "🔇 " : "🎤 ")}
+              {p.name}
+            </div>
           </div>
         ))}
       </div>
@@ -205,14 +266,49 @@ export default function App() {
             {list.map((p) => (
               <li key={p.id}>
                 <span className="chip" style={{ background: p.color }} />
-                {p.name}
-                {p.id === selfId && " (나)"}
+                <span className="who">
+                  {p.name}
+                  {p.id === selfId && " (나)"}
+                </span>
+                {p.voice && <span aria-label={p.muted ? "마이크 꺼짐" : "음성 참여 중"}>{p.muted ? "🔇" : "🎤"}</span>}
+                {p.id !== selfId && p.voice && voiceMode !== "off" && (
+                  <button type="button" className="mini" onClick={() => toggleBlock(p.id)}>
+                    {blocked.has(p.id) ? "듣기" : "음소거"}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         </details>
       </div>
       <Chat messages={messages} onSend={sendChat} />
+      <div className="voice">
+        {voiceError && (
+          <p className="voice-error" role="alert">
+            {voiceError}
+          </p>
+        )}
+        <div className="voice-row">
+          {voiceMode !== "off" && voiceMode !== "joining" && (
+            <button type="button" className="voice-leave" onClick={leaveVoice} aria-label="음성 채팅 나가기">
+              나가기
+            </button>
+          )}
+          <button
+            type="button"
+            className={`voice-btn ${voiceMode}`}
+            onClick={toggleMic}
+            disabled={voiceMode === "joining"}
+            aria-pressed={voiceMode === "live"}
+          >
+            {voiceMode === "off" && "🎙️ 음성 참여"}
+            {voiceMode === "joining" && "연결 중…"}
+            {voiceMode === "live" && "🎤 마이크 켜짐"}
+            {voiceMode === "muted" && "🔇 마이크 꺼짐"}
+          </button>
+        </div>
+        {voiceMode !== "off" && voiceMode !== "joining" && <p className="voice-hint">가까이 있는 사람의 목소리가 더 크게 들립니다</p>}
+      </div>
       <Joystick />
     </div>
   );

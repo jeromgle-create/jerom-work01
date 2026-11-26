@@ -14,3 +14,6 @@ export const input = {
 
 /** DOM name-tag elements keyed by player id; positioned each frame by the 3D scene. */
 export const labelEls = new Map<string, HTMLDivElement>();
+
+/** Local player's current position (read by proximity voice). */
+export const selfPos = { x: 0, z: 0 };
