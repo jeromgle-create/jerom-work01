@@ -200,7 +200,7 @@ export default function App() {
       <div className="join">
         <form className="card" onSubmit={submitJoin}>
           <h1>Jerom World</h1>
-          <p className="muted">닉네임과 색상을 고르고 입장하세요. 다른 접속자와 실시간으로 만나고 대화할 수 있습니다.</p>
+          <p className="muted">🏫 한빛초등학교 운동장에서 친구들을 만나 보세요. 닉네임과 색상을 고르고 입장하면 실시간으로 대화할 수 있습니다.</p>
           <label htmlFor="nick">닉네임</label>
           <input
             id="nick"
