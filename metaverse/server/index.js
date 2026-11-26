@@ -50,12 +50,15 @@ io.on("connection", (socket) => {
     }
     const name = clean(payload?.name, NAME_MAX) || "손님";
     const color = /^#[0-9a-fA-F]{6}$/.test(payload?.color) ? payload.color : "#4f8cff";
+    // Spawn on a ring around the central fountain (radius 1.4) so avatars never overlap it.
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 2.5 + Math.random() * 2.5;
     const player = {
       id: socket.id,
       name,
       color,
-      x: (Math.random() - 0.5) * 6,
-      z: (Math.random() - 0.5) * 6,
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
       ry: 0,
       lastChat: 0,
     };

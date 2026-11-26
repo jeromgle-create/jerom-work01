@@ -41,8 +41,10 @@ const OBSTACLES: Obstacle[] = (() => {
   return out;
 })();
 
+const FOUNTAIN = { x: 0, z: 0, r: 1.4 };
+
 function resolveCollisions(pos: THREE.Vector3) {
-  for (const o of OBSTACLES) {
+  for (const o of [FOUNTAIN, ...OBSTACLES]) {
     const dx = pos.x - o.x;
     const dz = pos.z - o.z;
     const d = Math.hypot(dx, dz);
