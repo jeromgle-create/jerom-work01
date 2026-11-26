@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { socket, remoteTargets, labelEls, selfPos, debugTeleport } from "./net";
 import { locationAt } from "./zones";
-import type { ChatMsg, Player } from "./types";
+import type { ChatMsg, ChatScope, Member, Player } from "./types";
+import { chatReducer, initialChat } from "./chatState";
 import World from "./World";
 import Chat from "./Chat";
 import Joystick from "./Joystick";
@@ -29,7 +30,8 @@ export default function App() {
   const [selfId, setSelfId] = useState("");
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [selfStart, setSelfStart] = useState<Player | null>(null);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [chat, dispatchChat] = useReducer(chatReducer, initialChat);
+  const [nearCount, setNearCount] = useState(0);
   const [bubbles, setBubbles] = useState<Record<string, Bubble>>({});
   const joinInfo = useRef<{ name: string; color: string } | null>(null);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("off");
@@ -73,6 +75,7 @@ export default function App() {
     };
     const onDisconnect = () => {
       setConnected(false);
+      dispatchChat({ type: "group", group: null, selfId: "" }); // meetings are tied to the old connection
       // Peer connections are tied to the old socket id; the user can rejoin voice after reconnecting.
       if (voiceRef.current?.active) {
         voiceRef.current.teardown();
@@ -103,12 +106,14 @@ export default function App() {
         }
       }
     };
-    const pushMsg = (m: ChatMsg) => setMessages((prev) => [...prev.slice(-99), m]);
     const onChat = (m: ChatMsg) => {
-      pushMsg(m);
+      dispatchChat({ type: "chat", msg: m });
+      // Only recipients get the message, so only they see the speech bubble.
       if (m.id) setBubbles((prev) => ({ ...prev, [m.id!]: { text: m.text, until: Date.now() + BUBBLE_MS } }));
     };
-    const onSystem = (m: ChatMsg) => pushMsg({ ...m, system: true });
+    const onSystem = (m: ChatMsg) => dispatchChat({ type: "system", msg: m });
+    const onGroup = (g: { id: string; members: Member[] } | null) =>
+      dispatchChat({ type: "group", group: g, selfId: socket.id ?? "" });
     const onVoiceState = (v: { id: string; voice: boolean; muted: boolean }) => {
       if (!v.voice) voiceRef.current?.closePeer(v.id);
       setPlayers((prev) => (prev[v.id] ? { ...prev, [v.id]: { ...prev[v.id], voice: v.voice, muted: v.muted } } : prev));
@@ -122,7 +127,9 @@ export default function App() {
     socket.on("chat", onChat);
     socket.on("system", onSystem);
     socket.on("voice:state", onVoiceState);
+    socket.on("group:state", onGroup);
     return () => {
+      socket.off("group:state", onGroup);
       socket.off("voice:state", onVoiceState);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -161,13 +168,21 @@ export default function App() {
     else socket.connect();
   };
 
-  const sendChat = (text: string) => socket.emit("chat", { text });
+  const sendChat = (scope: ChatScope, text: string) => socket.emit("chat", { scope, text });
 
   useEffect(() => () => voiceRef.current?.teardown(), []);
   // Current location for the HUD (e.g. "1층 · 과학실").
   useEffect(() => {
     if (!joined) return;
-    const t = setInterval(() => setPlace(locationAt(selfPos.x, selfPos.z).label), 250);
+    const t = setInterval(() => {
+      const here = locationAt(selfPos.x, selfPos.z);
+      setPlace(here.label);
+      // Hint for the "근처" tab: others within 3m in the same room (the server decides delivery).
+      let n = 0;
+      for (const p of remoteTargets.values())
+        if (Math.hypot(p.x - selfPos.x, p.z - selfPos.z) <= 3 && locationAt(p.x, p.z).key === here.key) n++;
+      setNearCount(n);
+    }, 250);
     return () => clearInterval(t);
   }, [joined]);
   useEffect(() => {
@@ -300,7 +315,7 @@ export default function App() {
           </ul>
         </details>
       </div>
-      <Chat messages={messages} onSend={sendChat} />
+      <Chat chat={chat} selfId={selfId} nearCount={nearCount} onSend={sendChat} />
       <div className="voice">
         {voiceError && (
           <p className="voice-error" role="alert">

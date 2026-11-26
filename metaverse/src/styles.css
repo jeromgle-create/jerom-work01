@@ -102,6 +102,29 @@ button, input { font: inherit; color: inherit; }
   align-self: flex-start; background: var(--panel); border: 1px solid var(--border);
   border-radius: 999px; padding: 6px 12px; cursor: pointer;
 }
+.chat-tabs { display: flex; gap: 4px; }
+.chat-tabs .tab {
+  position: relative; flex: 1; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--panel); cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--muted);
+}
+.chat-tabs .tab.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.chat-tabs .count {
+  margin-left: 4px; font-size: 0.72rem; padding: 0 6px; border-radius: 999px; background: var(--ok); color: #06210f;
+}
+.badge {
+  margin-left: 4px; font-size: 0.7rem; min-width: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--error); color: #fff; display: inline-block; text-align: center;
+}
+.live-dot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--ok); vertical-align: middle; }
+.meetings { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.meeting {
+  flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.75rem; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--muted); cursor: pointer;
+}
+.meeting.live { color: var(--text); }
+.meeting.on { border-color: var(--accent); color: var(--text); font-weight: 700; }
+.chat-form input:disabled, .chat-form button:disabled { opacity: 0.55; cursor: default; }
 .chat-list {
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px;
   height: 180px; overflow-y: auto; font-size: 0.9rem; line-height: 1.45;
@@ -146,5 +169,28 @@ button, input { font: inherit; color: inherit; }
   .voice { bottom: 160px; }
   .voice-hint { display: none; }
   .chat { bottom: 12px; width: calc(100vw - 168px); min-width: 150px; }
-  .chat-list { height: 130px; }
+  .chat-tabs { display: flex; gap: 4px; }
+.chat-tabs .tab {
+  position: relative; flex: 1; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--panel); cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--muted);
+}
+.chat-tabs .tab.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.chat-tabs .count {
+  margin-left: 4px; font-size: 0.72rem; padding: 0 6px; border-radius: 999px; background: var(--ok); color: #06210f;
+}
+.badge {
+  margin-left: 4px; font-size: 0.7rem; min-width: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--error); color: #fff; display: inline-block; text-align: center;
+}
+.live-dot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--ok); vertical-align: middle; }
+.meetings { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.meeting {
+  flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.75rem; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--muted); cursor: pointer;
+}
+.meeting.live { color: var(--text); }
+.meeting.on { border-color: var(--accent); color: var(--text); font-weight: 700; }
+.chat-form input:disabled, .chat-form button:disabled { opacity: 0.55; cursor: default; }
+.chat-list { height: 130px; }
 }
