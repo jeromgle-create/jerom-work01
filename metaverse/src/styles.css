@@ -68,6 +68,7 @@ button, input { font: inherit; color: inherit; }
   background: rgba(0, 0, 0, 0.55); color: #fff;
 }
 .name.self { background: var(--accent); color: var(--accent-text); }
+.name.speaking { box-shadow: 0 0 0 2px var(--ok); }
 .bubble {
   max-width: 200px; width: max-content; font-size: 13px; line-height: 1.35; padding: 6px 10px; border-radius: 12px;
   background: #fff; color: #1b2330; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); overflow-wrap: anywhere;
@@ -82,6 +83,11 @@ button, input { font: inherit; color: inherit; }
 .roster summary { cursor: pointer; color: var(--muted); }
 .roster ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 40vh; overflow: auto; }
 .roster li { display: flex; align-items: center; gap: 6px; padding: 2px 0; white-space: nowrap; }
+.roster .who { flex: 1; }
+.mini {
+  font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; cursor: pointer;
+}
 .chip { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
 .chat {
@@ -106,6 +112,25 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 14px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-text); cursor: pointer;
 }
 
+.voice {
+  position: absolute; right: 12px; bottom: 12px; z-index: 20; display: flex; flex-direction: column;
+  align-items: flex-end; gap: 6px; max-width: min(300px, calc(100vw - 24px));
+}
+.voice-row { display: flex; gap: 6px; }
+.voice-btn, .voice-leave {
+  border-radius: 999px; padding: 10px 16px; font-weight: 700; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel);
+}
+.voice-btn.live { background: var(--ok); color: #06210f; border-color: transparent; }
+.voice-btn.muted { background: var(--panel); color: var(--error); }
+.voice-btn:disabled { opacity: 0.6; cursor: default; }
+.voice-leave { font-weight: 500; padding: 10px 12px; }
+.voice-hint, .voice-error {
+  margin: 0; font-size: 0.8rem; padding: 4px 10px; border-radius: 8px; background: var(--panel); text-align: right;
+}
+.voice-hint { color: var(--muted); }
+.voice-error { color: var(--error); }
+
 .joystick {
   display: none; position: absolute; right: 24px; bottom: 24px; z-index: 20; width: 120px; height: 120px;
   border-radius: 50%; background: rgba(0, 0, 0, 0.18); border: 2px solid rgba(255, 255, 255, 0.5); touch-action: none;
@@ -114,6 +139,8 @@ button, input { font: inherit; color: inherit; }
 .knob { width: 52px; height: 52px; border-radius: 50%; background: rgba(255, 255, 255, 0.85); pointer-events: none; }
 @media (pointer: coarse) {
   .joystick { display: grid; }
+  .voice { bottom: 160px; }
+  .voice-hint { display: none; }
   .chat { bottom: 12px; width: calc(100vw - 168px); min-width: 150px; }
   .chat-list { height: 130px; }
 }

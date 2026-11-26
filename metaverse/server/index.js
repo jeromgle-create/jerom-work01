@@ -13,6 +13,17 @@ const TICK_MS = 66; // ~15 state broadcasts per second
 const CHAT_MAX = 200;
 const NAME_MAX = 16;
 const CHAT_COOLDOWN_MS = 700;
+const MAX_VOICE = Number(process.env.MAX_VOICE) || 8; // peer-to-peer mesh: keep small
+const SIGNAL_MAX = 20000; // bytes of JSON per WebRTC signaling message
+// ICE servers for WebRTC. Set ICE_SERVERS to a JSON array to add a TURN relay later without code changes.
+const ICE_SERVERS = (() => {
+  try {
+    if (process.env.ICE_SERVERS) return JSON.parse(process.env.ICE_SERVERS);
+  } catch {
+    console.warn("ICE_SERVERS is not valid JSON; using default STUN");
+  }
+  return [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+})();
 
 const app = express();
 const httpServer = createServer(app);
@@ -23,12 +34,13 @@ const io = new Server(httpServer, {
 
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 app.get("/healthz", (_req, res) => res.json({ ok: true, players: players.size }));
+app.get("/api/ice", (_req, res) => res.json({ iceServers: ICE_SERVERS }));
 if (existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get("*", (_req, res) => res.sendFile(path.join(distDir, "index.html")));
 }
 
-/** @type {Map<string, {id:string,name:string,color:string,x:number,z:number,ry:number,lastChat:number}>} */
+/** @type {Map<string, {id:string,name:string,color:string,x:number,z:number,ry:number,lastChat:number,voice:boolean,muted:boolean}>} */
 const players = new Map();
 const dirty = new Set();
 
@@ -39,7 +51,8 @@ const clean = (s, max) =>
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim()
     .slice(0, max);
-const publicPlayer = ({ id, name, color, x, z, ry }) => ({ id, name, color, x, z, ry });
+const publicPlayer = ({ id, name, color, x, z, ry, voice, muted }) => ({ id, name, color, x, z, ry, voice, muted });
+const voiceState = (p) => ({ id: p.id, voice: p.voice, muted: p.muted });
 
 io.on("connection", (socket) => {
   socket.on("join", (payload, ack) => {
@@ -61,6 +74,8 @@ io.on("connection", (socket) => {
       z: Math.sin(angle) * radius,
       ry: 0,
       lastChat: 0,
+      voice: false,
+      muted: false,
     };
     players.set(socket.id, player);
     ack?.({ ok: true, selfId: socket.id, players: [...players.values()].map(publicPlayer) });
@@ -86,6 +101,52 @@ io.on("connection", (socket) => {
     if (!text) return;
     p.lastChat = now;
     io.emit("chat", { id: p.id, name: p.name, color: p.color, text, ts: now });
+  });
+
+  // --- Voice chat: the server only relays WebRTC signaling; audio flows peer to peer. ---
+  socket.on("voice:join", (_payload, ack) => {
+    const p = players.get(socket.id);
+    if (!p) return ack?.({ ok: false, error: "먼저 입장해 주세요." });
+    if (!p.voice) {
+      const inVoice = [...players.values()].filter((o) => o.voice).length;
+      if (inVoice >= MAX_VOICE) {
+        return ack?.({ ok: false, error: `음성 채팅은 최대 ${MAX_VOICE}명까지 참여할 수 있습니다.` });
+      }
+    }
+    p.voice = true;
+    p.muted = false;
+    const peers = [...players.values()].filter((o) => o.voice && o.id !== p.id).map((o) => o.id);
+    ack?.({ ok: true, peers });
+    io.emit("voice:state", voiceState(p));
+  });
+
+  socket.on("voice:mute", (m) => {
+    const p = players.get(socket.id);
+    if (!p || !p.voice) return;
+    p.muted = !!m?.muted;
+    io.emit("voice:state", voiceState(p));
+  });
+
+  socket.on("voice:leave", () => {
+    const p = players.get(socket.id);
+    if (!p || !p.voice) return;
+    p.voice = false;
+    p.muted = false;
+    io.emit("voice:state", voiceState(p));
+  });
+
+  socket.on("rtc:signal", (m) => {
+    const p = players.get(socket.id);
+    const target = players.get(m?.to);
+    if (!p?.voice || !target?.voice || target.id === p.id) return;
+    let size = 0;
+    try {
+      size = JSON.stringify(m.data ?? null).length;
+    } catch {
+      return;
+    }
+    if (size > SIGNAL_MAX) return;
+    io.to(target.id).emit("rtc:signal", { from: p.id, data: m.data });
   });
 
   socket.on("disconnect", () => {

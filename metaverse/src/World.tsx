@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { input, labelEls, remoteTargets, socket } from "./net";
+import { input, labelEls, remoteTargets, selfPos, socket } from "./net";
 import { WORLD_HALF, type Player } from "./types";
 
 type Props = { selfId: string; selfStart: Player; players: Player[] };
@@ -138,6 +138,8 @@ function LocalPlayer({ start }: { start: Player }) {
       const diff = Math.atan2(Math.sin(target - ry.current), Math.cos(target - ry.current));
       ry.current += diff * Math.min(1, dt * 12);
     }
+    selfPos.x = pos.current.x;
+    selfPos.z = pos.current.z;
     const g = group.current;
     if (g) {
       g.position.copy(pos.current);
