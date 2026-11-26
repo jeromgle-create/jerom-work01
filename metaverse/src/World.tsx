@@ -9,11 +9,15 @@ import { portalAt, zoneAt, type ZoneId } from "./zones";
 
 const PORTAL_COOLDOWN_MS = 800;
 // Outdoors: pulled back and aiming ahead so the building stays in view. Indoors: steep dollhouse view.
+// Courtyard: the 남관 building stands between it and the usual camera, so look down from above.
 const CAMERA = {
   outdoor: { offset: new THREE.Vector3(0, 10, 15), ahead: 5, lookY: 1.5 },
+  courtyard: { offset: new THREE.Vector3(0, 17, 5.5), ahead: 0.5, lookY: 0.5 },
   indoor: { offset: new THREE.Vector3(0, 13, 8), ahead: 1, lookY: 0.5 },
 };
-const camFor = (zone: ZoneId) => (zone === "outdoor" ? CAMERA.outdoor : CAMERA.indoor);
+const COURTYARD_Z = -8.6;
+const camFor = (zone: ZoneId, z = 0) =>
+  zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
 
 function collide(pos: THREE.Vector3) {
   const zone = zoneAt(pos.x);
@@ -87,7 +91,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     pos.current.set(start.x, 0, start.z);
     zone.current = zoneAt(start.x);
     onZone(zone.current);
-    camera.position.copy(pos.current).add(camFor(zone.current).offset);
+    camera.position.copy(pos.current).add(camFor(zone.current, pos.current.z).offset);
   }, [start, camera, onZone]);
 
   useFrame(({ size }, dt) => {
@@ -124,7 +128,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       lastSent.current.t = 0;
     }
     const z = zoneAt(pos.current.x);
-    const cam = camFor(z);
+    const cam = camFor(z, pos.current.z);
     if (z !== zone.current) {
       zone.current = z;
       onZone(z);
@@ -233,7 +237,7 @@ export default function World({ selfId, selfStart, players }: Props) {
         shadow-camera-top={30}
         shadow-camera-bottom={-30}
       />
-      {indoor ? <Interior zone={zone as Exclude<ZoneId, "outdoor">} dark={dark} /> : <School dark={dark} />}
+      {indoor ? <Interior zone={zone} dark={dark} /> : <School dark={dark} />}
       <LocalPlayer start={selfStart} onZone={setZone} />
       {players
         .filter((p) => p.id !== selfId)

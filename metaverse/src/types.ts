@@ -1,4 +1,3 @@
-export const WORLD_HALF = 24; // must match server WORLD_HALF
 
 export type Player = {
   id: string;
