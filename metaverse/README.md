@@ -94,6 +94,19 @@ npm run build && npm start   # http://localhost:3001
 ```
 브라우저 탭 2개로 접속하면 실시간 동기화를 바로 확인할 수 있습니다.
 
+## 자동 테스트 (`tests/`)
+```bash
+cd metaverse
+bash tests/run-all.sh              # 빌드 → 로컬 서버 → 시뮬레이션 + 서버 규칙 + 브라우저 테스트 전체 (약 10분)
+bash tests/run-all.sh stairs rides # 시뮬레이션 + 서버 규칙 + 고른 브라우저 항목만
+MV_URL=https://jerom-world.onrender.com node tests/e2e.mjs rides   # 배포된 사이트에서
+```
+| 파일 | 내용 |
+|---|---|
+| `tests/sim.mjs` | 브라우저 없이: 모든 방·계단·출입구 도달 가능, 벽 통과 없음, 클릭 이동 경로 |
+| `tests/bots.mjs` | 서버 규칙: 근처/만남/전체 채팅 대상, 만남 그룹, 탈것 탑승 검증·좌석 배정 |
+| `tests/e2e.mjs` | Playwright: 동기화·채팅, 전 건물 계단, 함께 타기, 클릭/터치 이동, 화면 끌기·확대축소, 지도, 음성 거리 |
+
 ## 외부 배포 (택 1)
 
 > Vercel은 WebSocket 서버를 상시 실행할 수 없어 이 프로젝트에는 맞지 않습니다. 아래처럼 **Node 서버를 상시 실행하는 호스팅**을 사용합니다.

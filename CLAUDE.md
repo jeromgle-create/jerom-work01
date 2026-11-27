@@ -15,7 +15,7 @@ This repo now hosts a Next.js app (TypeScript, App Router, Tailwind CSS v4) alon
 - `intro.html`, `index.html` — original self-contained static prototype (inline `<style>`, no dependencies). Kept as reference/fallback; not part of the Next.js build.
 - `PRD.md` — requirements for the personal-intro site expansion (contact links, responsive layout, projects section).
 - `wireframe.png`, `scripts/` — supporting design assets.
-- `metaverse/` — standalone real-time multiplayer 3D app (Vite + React Three Fiber client, Express + Socket.IO server). Own `package.json`, excluded from the root Next.js tsconfig/eslint; see `metaverse/README.md` for running and deployment.
+- `metaverse/` — standalone real-time multiplayer 3D app (Vite + React Three Fiber client, Express + Socket.IO server). Own `package.json`, excluded from the root Next.js tsconfig/eslint; see `metaverse/README.md` for running and deployment. For any work on it, use the project skill `.claude/skills/hanbit-metaverse/SKILL.md` (architecture, recipes, tests in `metaverse/tests/`, Render deploy).
 
 ## Working in this repo
 

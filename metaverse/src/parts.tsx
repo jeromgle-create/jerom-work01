@@ -18,6 +18,12 @@ export const box = (cx: number, cz: number, w: number, d: number): Collider => (
 });
 export const circle = (x: number, z: number, r: number): Collider => ({ kind: "circle", x, z, r });
 
+function insideAny(colliders: Collider[], x: number, z: number) {
+  return colliders.some((c) =>
+    c.kind === "circle" ? Math.hypot(x - c.x, z - c.z) < c.r + PLAYER_R - 1e-3 : x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ,
+  );
+}
+
 /** Push a player (circle of PLAYER_R) out of every collider. */
 export function pushOut(pos: THREE.Vector3, colliders: Collider[]) {
   for (const c of colliders) {
@@ -43,7 +49,9 @@ export function pushOut(pos: THREE.Vector3, colliders: Collider[]) {
         pos.z = cz + (dz / d) * PLAYER_R;
       }
     } else {
-      // Center ended up inside the box: push out through the nearest side.
+      // Center ended up inside the box (teleport, spawn): push out through the nearest side that
+      // doesn't land inside another collider. Where two boxes touch (a seam between buildings),
+      // the nearest side alone would bounce the player straight into the neighbour.
       const pushes = [
         [c.minX - PLAYER_R - pos.x, 0],
         [c.maxX + PLAYER_R - pos.x, 0],
@@ -51,8 +59,9 @@ export function pushOut(pos: THREE.Vector3, colliders: Collider[]) {
         [0, c.maxZ + PLAYER_R - pos.z],
       ];
       pushes.sort((a, b) => Math.abs(a[0] + a[1]) - Math.abs(b[0] + b[1]));
-      pos.x += pushes[0][0];
-      pos.z += pushes[0][1];
+      const ok = pushes.find(([dx, dz]) => !insideAny(colliders, pos.x + dx, pos.z + dz)) ?? pushes[0];
+      pos.x += ok[0];
+      pos.z += ok[1];
     }
   }
 }
