@@ -39,7 +39,7 @@ export const view = {
   recenter: false,
 };
 export const ZOOM_MIN = 0.5;
-export const ZOOM_MAX = 2.2;
+export const ZOOM_MAX = 4; // pinch out / wheel: up to 4x the default camera distance
 
 /** Click / tap-to-move order from the pointer handler to the local player (seq bumps on each click). */
 export const moveOrder: { seq: number; x: number; z: number; active: boolean } = { seq: 0, x: 0, z: 0, active: false };
