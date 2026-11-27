@@ -509,7 +509,7 @@ export default function World({ selfId, selfStart, players }: Props) {
   }, []);
 
   return (
-    <Canvas shadows camera={{ fov: 50, position: [0, 9, 11] }} dpr={[1, 2]} className="canvas">
+    <Canvas shadows camera={{ fov: 50, position: [0, 9, 11], far: 2500 }} dpr={[1, 2]} className="canvas">
       <color attach="background" args={[bg]} />
       <fog attach="fog" args={[bg, indoor ? 25 : 40, fogFar]} />
       <FogFollowsZoom near={indoor ? 25 : 40} far={fogFar} />

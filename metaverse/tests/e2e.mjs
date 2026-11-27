@@ -165,12 +165,16 @@ if (on("pan") || on("zoom")) {
   check(Math.hypot(p2.x, p2.z) < 0.1, "'내 위치로' brings the camera back");
   await t.pinch(195, 330, 260, 60);
   await m.waitForTimeout(600);
-  check((await zoom(m)) > 3.9, "pinch in zooms out to the 4x limit", `zoom ${round(await zoom(m), 2)}`);
+  await t.pinch(195, 330, 260, 60); // a second pinch: the limit is 8x
+  await m.waitForTimeout(600);
+  check((await zoom(m)) > 7.9, "pinching in zooms out to the 8x limit", `zoom ${round(await zoom(m), 2)}`);
   const before = await pan(m);
   await t.pinch(195, 330, 60, 260);
   await m.waitForTimeout(600);
   const after = await pan(m);
-  check((await zoom(m)) < 1.5 && Math.hypot(after.x - before.x, after.z - before.z) < 0.01, "spread zooms back in without panning");
+  await t.pinch(195, 330, 60, 260);
+  await m.waitForTimeout(600);
+  check((await zoom(m)) < 1.5 && Math.hypot(after.x - before.x, after.z - before.z) < 0.01, "spreading zooms back in without panning");
   await closeAll();
 }
 
