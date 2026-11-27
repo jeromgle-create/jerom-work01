@@ -33,3 +33,6 @@ export const serverNow = () => Date.now() + clock.offset;
 export const view = { zoom: 1 };
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.2;
+
+/** Click / tap-to-move order from the pointer handler to the local player (seq bumps on each click). */
+export const moveOrder: { seq: number; x: number; z: number; active: boolean } = { seq: 0, x: 0, z: 0, active: false };

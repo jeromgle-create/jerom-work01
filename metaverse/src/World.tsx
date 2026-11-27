@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { ZOOM_MAX, ZOOM_MIN, debugTeleport, input, labelEls, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
+import { ZOOM_MAX, ZOOM_MIN, debugTeleport, input, labelEls, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
+import { findPath } from "./pathfind";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
@@ -95,6 +96,8 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
   const camera = useThree((s) => s.camera);
   const zone = useRef<ZoneId>(zoneAt(start.x));
   const cooldownUntil = useRef(0);
+  /** Click-to-move path (waypoints) and which click it belongs to. */
+  const path = useRef<{ seq: number; pts: { x: number; z: number }[]; i: number } | null>(null);
   /** Current ride (train car / lift chair) and where to step off. */
   const riding = useRef<
     | (RideState & { land: { x: number; z: number; ry: number } })
@@ -118,6 +121,38 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     if (k.has("d") || k.has("arrowright")) mx += 1;
     if (k.has("w") || k.has("arrowup")) mz -= 1;
     if (k.has("s") || k.has("arrowdown")) mz += 1;
+    // Click / tap to move: plan a path when a new order arrives; keys or joystick cancel it.
+    if (len0(mx, mz) > 0.05 || riding.current) {
+      if (path.current) {
+        path.current = null;
+        moveOrder.active = false;
+      }
+    } else if (moveOrder.active && path.current?.seq !== moveOrder.seq) {
+      const pts = findPath({ x: pos.current.x, z: pos.current.z }, { x: moveOrder.x, z: moveOrder.z }, collide);
+      path.current = pts ? { seq: moveOrder.seq, pts, i: 0 } : null;
+      if (!pts) moveOrder.active = false;
+    }
+    if (path.current && !riding.current) {
+      const p = path.current;
+      let wp = p.pts[p.i];
+      while (wp && Math.hypot(wp.x - pos.current.x, wp.z - pos.current.z) < 0.25) wp = p.pts[++p.i];
+      if (!wp) {
+        path.current = null;
+        moveOrder.active = false; // arrived
+      } else {
+        const dx = wp.x - pos.current.x;
+        const dz = wp.z - pos.current.z;
+        const d = Math.hypot(dx, dz);
+        mx = dx / d;
+        mz = dz / d;
+        // don't overshoot the last waypoint
+        if (p.i === p.pts.length - 1 && d < SPEED * Math.min(dt, 0.1)) {
+          const k = d / (SPEED * Math.min(dt, 0.1));
+          mx *= k;
+          mz *= k;
+        }
+      }
+    }
     const len = Math.hypot(mx, mz);
     if (riding.current && "pending" in riding.current) {
       // Waiting for the server to assign a vehicle and seat (one round trip).
@@ -137,7 +172,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
         pos.current.set(p.x, p.y, p.z);
         ry.current = p.ry;
       }
-    } else if (len > 0.05) {
+    } else if (len > 0.001) {
       const s = Math.min(len, 1) / len;
       pos.current.x += mx * s * SPEED * Math.min(dt, 0.1);
       pos.current.z += mz * s * SPEED * Math.min(dt, 0.1);
@@ -171,6 +206,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
         jumped = true;
       }
     }
+    const debugJump = !!debugTeleport.pending;
     if (debugTeleport.pending) {
       pos.current.set(debugTeleport.pending.x, 0, debugTeleport.pending.z);
       collide(pos.current);
@@ -182,6 +218,10 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     const cam = camFor(z, pos.current.z);
     if (z !== zone.current || jumped) {
       if (z !== zone.current) onZone(z);
+      if (path.current && (z !== zone.current || debugJump)) {
+        path.current = null; // went through a door / stairs: the old path is for another place
+        moveOrder.active = false;
+      }
       zone.current = z;
       camera.position.copy(pos.current).addScaledVector(cam.offset, view.zoom); // cut, don't fly across the map
     }
@@ -222,6 +262,81 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
 }
 
 /** Two-finger pinch (touch) and mouse wheel change the camera distance. */
+const len0 = (x: number, z: number) => Math.hypot(x, z);
+
+/** Ground point under the pointer (y = 0 plane). */
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const raycaster = new THREE.Raycaster();
+
+/**
+ * Click (mouse) or short tap (touch) on the scene: walk there. Drags, long presses and multi-finger
+ * gestures (pinch zoom) are ignored.
+ */
+function ClickToMove() {
+  const el = useThree((s) => s.gl.domElement);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    const down = new Map<number, { x: number; y: number; t: number }>();
+    let multi = false;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      // e.timeStamp is when the touch happened, not when this handler ran (busy frames delay handlers)
+      down.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
+      if (down.size > 1) multi = true;
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = down.get(e.pointerId);
+      down.delete(e.pointerId);
+      const wasMulti = multi;
+      if (down.size === 0) multi = false;
+      if (!d || wasMulti) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || e.timeStamp - d.t > 500) return;
+      const r = el.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const hit = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(groundPlane, hit)) return;
+      moveOrder.x = hit.x;
+      moveOrder.z = hit.z;
+      moveOrder.seq++;
+      moveOrder.active = true;
+    };
+    const onCancel = (e: PointerEvent) => {
+      down.delete(e.pointerId);
+      if (down.size === 0) multi = false;
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onCancel);
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onCancel);
+    };
+  }, [el, camera]);
+  return null;
+}
+
+/** Pulsing ring where the player was told to go. */
+function MoveMarker() {
+  const ring = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    const m = ring.current;
+    if (!m) return;
+    m.visible = moveOrder.active;
+    if (!moveOrder.active) return;
+    m.position.set(moveOrder.x, 0.05, moveOrder.z);
+    const s = 1 + 0.15 * Math.sin(clock.elapsedTime * 6);
+    m.scale.set(s, s, s);
+  });
+  return (
+    <mesh ref={ring} rotation-x={-Math.PI / 2} visible={false}>
+      <ringGeometry args={[0.35, 0.55, 32]} />
+      <meshBasicMaterial color="#3bb273" transparent opacity={0.9} />
+    </mesh>
+  );
+}
+
 function ZoomControls() {
   const el = useThree((s) => s.gl.domElement);
   useEffect(() => {
@@ -348,6 +463,8 @@ export default function World({ selfId, selfStart, players }: Props) {
       <LocalPlayer start={selfStart} onZone={setZone} />
       <RideVehicles />
       <ZoomControls />
+      <ClickToMove />
+      <MoveMarker />
       {players
         .filter((p) => p.id !== selfId)
         .map((p) => (
