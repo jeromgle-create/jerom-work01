@@ -18,7 +18,7 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | Path | Role |
 |---|---|
 | `shared/layout.js` | **Single source of truth** for the world: zones, 13 building floors (113 rooms), campus doors, park zone, portals (doors/stairs/exits/rides), ride paths + `ridePose`/`seatPose`, `locationKey`. Imported by both client and server. |
-| `server/index.js` | Socket.IO relay: join/move (clamped to `ZONE_RECTS`), state tick 15 Hz, chat scopes (near/group/all — **server picks recipients**), meeting groups, voice signaling relay, rides (vehicles, seats, departure). Serves `dist/`. |
+| `server/index.js` | Socket.IO relay: join/move (clamped to `ZONE_RECTS`, speed-checked: distance budget refilling at `MOVE_SPEED` 9 m/s up to `MOVE_BURST` 12 m; longer jumps only through a door/stairs portal, else `correct` snap-back; riders placed by the server from `seatPose`), state tick 15 Hz, chat scopes (near/group/all — **server picks recipients**), meeting groups, voice signaling relay, rides (vehicles, seats, departure). Serves `dist/`. |
 | `src/World.tsx` | Canvas, LocalPlayer (input, collisions, portals, rides, click-to-move path following, camera follow/pan/zoom), RemotePlayer (interpolation or ride pose), ClickToMove (tap vs drag), ZoomControls (pinch/wheel), fog-follows-zoom. Zoom range `ZOOM_MIN`/`ZOOM_MAX` = 0.5–8 in `src/net.ts`. |
 | `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. |
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). |
@@ -27,7 +27,7 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/parts.tsx` | Box/BoxInstances/Sign meshes, 2D colliders + `pushOut`. |
 | `src/pathfind.ts` | A* over a walkability grid built from `collide()`; avoids portal mats unless targeted. |
 | `src/Minimap.tsx`, `Chat.tsx`, `chatState.ts`, `voice.ts`, `App.tsx` | Minimap/full map, three-tab chat, WebRTC proximity voice, HUD + `window.__mvDebug` test hooks (read-only on the live site; `teleport` only when built with `VITE_MV_DEBUG=1`). |
-| `tests/` | `sim.mjs` (headless reachability/collision/path), `bots.mjs` (server rules), `e2e.mjs` (Playwright, needs the teleport test build), `live.mjs` (production smoke, no teleport), `run-all.sh`. |
+| `tests/` | `sim.mjs` (headless reachability/collision/path), `bots.mjs` (server rules), `e2e.mjs` (Playwright, needs the teleport test build), `speed.mjs` (server movement check, own server on :4102), `live.mjs` (production smoke, no teleport), `run-all.sh`. |
 
 Key ideas to keep intact (they make features cheap and must not be broken):
 
@@ -118,7 +118,10 @@ visible to real users — mention it if someone was online.
   north wall; the courtyard uses a steeper camera.
 - Teleport is blocked on the live site (user's request): `__mvDebug.teleport` is only added when
   built with `VITE_MV_DEBUG=1`, which `tests/run-all.sh` sets. `tests/e2e.mjs` therefore cannot run
-  against production; use `tests/live.mjs` there. Never ship the flag to Render. The server still
-  only clamps moves to zone rectangles, so a hand-modified client could jump; add a server-side
-  speed check if that ever matters.
+  against production; use `tests/live.mjs` there. Never ship the flag to Render.
+- The server refuses jumps too (user's request), so even a modified client can't teleport. The test
+  server runs with `MV_ALLOW_TELEPORT=1` (set by `run-all.sh`) so the teleport hook works; never
+  set it on Render. Any new way of moving fast (new portal kind, new vehicle, faster walking) must
+  be allowed in the `move` handler (`throughPortal`, the ride branch, `MOVE_SPEED`) or players get
+  pulled back — add a case to `tests/speed.mjs`.
 - Real school plan PDFs are not committed — only room names/order go into `layout.js`.

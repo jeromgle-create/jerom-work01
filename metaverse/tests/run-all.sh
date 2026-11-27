@@ -7,12 +7,13 @@
 set -u
 cd "$(dirname "$0")/.."
 VITE_MV_DEBUG=1 npm run build >/dev/null || { echo "build failed"; exit 1; }
-NODE_ENV=production PORT=4100 node server/index.js >/tmp/mv-test-server.log 2>&1 &
+MV_ALLOW_TELEPORT=1 NODE_ENV=production PORT=4100 node server/index.js >/tmp/mv-test-server.log 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null' EXIT
 sleep 1
 status=0
 echo "== sim (collisions, reachability, paths)"; node tests/sim.mjs || status=1
+echo "== speed (no teleporting)";             node tests/speed.mjs || status=1
 echo "== bots (chat rules, rides)";            MV_URL=http://localhost:4100 node tests/bots.mjs || status=1
 echo "== e2e (browser)";                        MV_URL=http://localhost:4100 node tests/e2e.mjs "$@" || status=1
 exit $status

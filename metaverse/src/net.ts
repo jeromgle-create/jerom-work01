@@ -18,8 +18,8 @@ export const labelEls = new Map<string, HTMLDivElement>();
 /** Local player's current position (read by proximity voice). */
 export const selfPos = { x: 0, z: 0, y: 0, ry: 0 };
 
-/** Test hook: a pending teleport consumed by the local player (positions are still clamped by the server). */
-export const debugTeleport: { pending: { x: number; z: number } | null } = { pending: null };
+/** A pending jump consumed by the local player: the server's snap-back (`correct`) or the test build's teleport hook. */
+export const debugTeleport: { pending: { x: number; z: number } | null; corrections: number } = { pending: null, corrections: 0 };
 
 // ---------- rides ----------
 export type RideState = { ride: number; dir: "ab" | "ba"; start: number; vehicle: string; seat: number }; // start: departure, server time (ms)
