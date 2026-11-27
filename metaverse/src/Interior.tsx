@@ -593,7 +593,8 @@ export default function Interior({ zone, dark }: { zone: string; dark: boolean }
     // wall spans already used by boards, cabinets and shelves taller than the sill
     const busy = data.items
       .filter((it) => it.p[2] - it.s[2] / 2 < f.minZ + 1.2 && it.p[1] + it.s[1] / 2 > 0.95 && it.s[0] < f.maxX - f.minX - 1)
-      .map((it) => [it.p[0] - it.s[0] / 2, it.p[0] + it.s[0] / 2]);
+      .map((it) => [it.p[0] - it.s[0] / 2, it.p[0] + it.s[0] / 2])
+      .concat(data.signs.filter((s) => s.p[2] < f.minZ + 1.2 && s.p[1] + s.size[1] / 2 > 0.95).map((s) => [s.p[0] - s.size[0] / 2, s.p[0] + s.size[0] / 2]));
     const walls = data.segs.filter((s) => Math.abs((s.minZ + s.maxZ) / 2 - f.minZ) < 0.2);
     for (let x = f.minX + 1.4; x < f.maxX - 1.2; x += 2.4) {
       if (busy.some(([a, b]) => x + 1.05 > a && x - 1.05 < b)) continue;

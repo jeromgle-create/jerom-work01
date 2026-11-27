@@ -185,9 +185,11 @@ if (on("pan") || on("zoom")) {
 if (on("map")) {
   console.log("\n# minimap and full map");
   const p = await open("지도");
+  const t0 = Date.now();
   await teleport(p, L.FLOOR_BY_ID.E2.cx - 10, 0);
-  await p.waitForTimeout(1500);
-  check((await p.textContent(".minimap-title")).includes("본관 2층"), "minimap follows the current floor");
+  // the first visit to a floor builds it (and compiles its materials): slow under software rendering
+  await p.waitForFunction(() => document.querySelector(".minimap-title")?.textContent.includes("본관 2층"), null, { timeout: 20000 }).catch(() => {});
+  check((await p.textContent(".minimap-title")).includes("본관 2층"), "minimap follows the current floor", `${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await p.click(".minimap");
   await p.waitForSelector(".map-card");
   await p.click('.map-tabs button:has-text("서울대공원")');
