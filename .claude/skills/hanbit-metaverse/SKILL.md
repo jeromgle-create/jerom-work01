@@ -1,6 +1,6 @@
 ---
 name: hanbit-metaverse
-description: Work on the 한빛초등학교 metaverse in metaverse/ (Vite + React Three Fiber client, Express + Socket.IO server, deployed on Render as jerom-world). Use this skill for ANY change to that app - adding or moving rooms, floors, buildings or park attractions, editing the floor plan data, chat / meeting / voice behaviour, rides (elephant train, sky lift), minimap, click-to-move, camera pan/zoom, mobile controls, bug fixes, testing, or deploying - even when the user only says "메타버스", "학교 맵", "교실 추가", "대공원", "배포해줘" or names a room without mentioning code.
+description: Work on the 한빛초등학교 metaverse in metaverse/ (Vite + React Three Fiber client, Express + Socket.IO server, deployed on Render as jerom-world). Use this skill for ANY change to that app - adding or moving rooms, floors, buildings or park attractions, editing the floor plan data, chat / meeting / voice behaviour, rides (elephant train, sky lift), minimap, click-to-move, camera pan/zoom, mobile controls, graphics / realism (sky, lighting, textures, buildings, trees), avatars / characters, anti-cheat (teleport, speed check), bug fixes, testing, or deploying - even when the user only says "메타버스", "학교 맵", "교실 추가", "대공원", "그래픽", "캐릭터", "순간이동", "배포해줘" or names a room without mentioning code.
 ---
 
 # 한빛초등학교 metaverse
@@ -22,7 +22,7 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/World.tsx` | Canvas, LocalPlayer (input, collisions, portals, rides, click-to-move path following, camera follow/pan/zoom), RemotePlayer (interpolation or ride pose), ClickToMove (tap vs drag), ZoomControls (pinch/wheel), fog-follows-zoom. Zoom range `ZOOM_MIN`/`ZOOM_MAX` = 0.5–8 in `src/net.ts`. |
 | `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. Realistic pass: `Building` (floor bands, framed glass, pillars, parapet, green roof, rooftop tower/tank), `Entrances` (glass doors + canopies, visual only), `Cutaway` (남관 sinks while the player is in the courtyard), instanced `Forest` trees, noise `HILL`s. |
 | `src/look.ts` | Canvas-painted textures (grass, soil, concrete, brick, pavers, roof, stone) and `worldMapped(kind, metres)`: a MeshStandardMaterial sampling by world position (box projection) so instanced boxes get real-scale textures without UVs; `materials()` = shared set (+ glass, frame, steel, litGlass). `BoxInstances` takes `material`. |
-| `src/Atmosphere.tsx` | `Atmosphere`: Sky shader background outdoors by day (follows the camera), PMREM environment from a soft LDR gradient dome (outdoor) or RoomEnvironment (indoor/night), per-zone `environmentIntensity`. `Sun`: directional light + soft shadow box following the player. |
+| `src/Atmosphere.tsx` | `Atmosphere` (owns `scene.background`): Sky shader rendered ONCE into a cube map (static sun) as the day background, PMREM environment from a soft LDR gradient dome (outdoor) or RoomEnvironment (indoor/night), per-zone `environmentIntensity`. `Sun`: directional light + soft shadow box following the player. |
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
@@ -103,6 +103,12 @@ Testing gotchas learned the hard way:
   long presses. App code must use `e.timeStamp`, not `performance.now()`, for tap timing.
 - Two heavy pages in one browser slow each other; close contexts between sections.
 - Random-walk tests must start from standable points (`isFree`), not inside furniture.
+- Never run `npm run build` while `run-all.sh` is running: the test server serves `dist/`, a plain
+  build drops the teleport hook mid-run and the results are invalid. Rebuild with
+  `VITE_MV_DEBUG=1` or wait.
+- Richer graphics lower software-WebGL fps (≈4 → 2): timing between two pages gets tight, so start
+  multi-player actions in parallel (`Promise.all`, as in the shared-train check), never rely on a
+  page being quick.
 
 ## Deploy
 
