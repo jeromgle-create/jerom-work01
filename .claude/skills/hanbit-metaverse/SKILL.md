@@ -19,7 +19,7 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 |---|---|
 | `shared/layout.js` | **Single source of truth** for the world: zones, 13 building floors (113 rooms), campus doors, park zone, portals (doors/stairs/exits/rides), ride paths + `ridePose`/`seatPose`, `locationKey`. Imported by both client and server. |
 | `server/index.js` | Socket.IO relay: join/move (clamped to `ZONE_RECTS`), state tick 15 Hz, chat scopes (near/group/all — **server picks recipients**), meeting groups, voice signaling relay, rides (vehicles, seats, departure). Serves `dist/`. |
-| `src/World.tsx` | Canvas, LocalPlayer (input, collisions, portals, rides, click-to-move path following, camera follow/pan/zoom), RemotePlayer (interpolation or ride pose), ClickToMove (tap vs drag), ZoomControls (pinch/wheel), fog-follows-zoom. |
+| `src/World.tsx` | Canvas, LocalPlayer (input, collisions, portals, rides, click-to-move path following, camera follow/pan/zoom), RemotePlayer (interpolation or ride pose), ClickToMove (tap vs drag), ZoomControls (pinch/wheel), fog-follows-zoom. Zoom range `ZOOM_MIN`/`ZOOM_MAX` = 0.5–8 in `src/net.ts`. |
 | `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. |
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. |
@@ -57,6 +57,10 @@ building mesh + collider in `School.tsx`. Mark ground floors `exit: true`.
 
 **Park changes** — scenery/colliders in `Park.tsx` (park-local coords), quick-travel/ride stations
 in `PARK_RIDES` + paths/durations in `RIDES` (layout). Keep fences as colliders so pens stay closed.
+
+**Zoom range** — `ZOOM_MAX` in `src/net.ts` (now 8). Going higher also needs the Canvas camera
+`far` (World.tsx, 2500) and the ground planes in `School.tsx`/`Park.tsx` (+600) enlarged, and the
+`zoom` e2e check (`zoom > 7.9`) updated; look at max-zoom screenshots of campus, a floor and the park.
 
 **HUD text / labels** — `zones.ts` (`campusLabel`, `parkLabel`, `locationAt`).
 
