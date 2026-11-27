@@ -24,6 +24,7 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
+| `src/Human.tsx` | Avatar: rigged mannequin `public/models/xbot.glb` (Mixamo X Bot, meshopt) cloned per player with `SkeletonUtils.clone`, tinted with the player colour; idle/walk/run blended by measured speed; sitting pose by bending leg bones while riding. Capsule `Avatar` in World.tsx is the loading fallback. |
 | `src/parts.tsx` | Box/BoxInstances/Sign meshes, 2D colliders + `pushOut`. |
 | `src/pathfind.ts` | A* over a walkability grid built from `collide()`; avoids portal mats unless targeted. |
 | `src/Minimap.tsx`, `Chat.tsx`, `chatState.ts`, `voice.ts`, `App.tsx` | Minimap/full map, three-tab chat, WebRTC proximity voice, HUD + `window.__mvDebug` test hooks (read-only on the live site; `teleport` only when built with `VITE_MV_DEBUG=1`). |
@@ -61,6 +62,13 @@ in `PARK_RIDES` + paths/durations in `RIDES` (layout). Keep fences as colliders 
 **Zoom range** — `ZOOM_MAX` in `src/net.ts` (now 8). Going higher also needs the Canvas camera
 `far` (World.tsx, 2500) and the ground planes in `School.tsx`/`Park.tsx` (+600) enlarged, and the
 `zoom` e2e check (`zoom > 7.9`) updated; look at max-zoom screenshots of campus, a floor and the park.
+
+**Avatar / character models** — `src/Human.tsx` + `public/models/` (sources and licence notes in its
+README). Compress new models with glTF Transform (`optimize --compress meshopt`, webp textures);
+keep only needed clips. Another Mixamo body can NOT borrow the X Bot's clips by bone name: rest
+poses and rig scales differ (it rendered upside down/huge) — give it its own clips or retarget
+properly. Only GitHub raw and npm are reachable from the cloud session for downloading assets.
+Look at screenshots: standing, walking, a classroom, the lift (seated), and a phone.
 
 **HUD text / labels** — `zones.ts` (`campusLabel`, `parkLabel`, `locationAt`).
 

@@ -5,9 +5,11 @@ import { check, done, join, launch, pos, round, touch, zoom } from "./lib.mjs";
 const browser = await launch();
 
 console.log("\n# desktop: join, walk, no teleport, all-chat");
-const a = await join(browser, "확인1");
+const modelLoads = [];
+const a = await join(browser, "확인1", { onPage: (pg) => pg.on("response", (r) => r.url().endsWith("/models/xbot.glb") && modelLoads.push(r.status())) });
 const b = await join(browser, "확인2");
 check(await a.evaluate(() => typeof window.__mvDebug.teleport === "undefined"), "teleport hook is not available on this site");
+check(modelLoads.includes(200), "the 3D person model loads", JSON.stringify(modelLoads));
 const p0 = await pos(a);
 await a.mouse.click(550, 250);
 await a.keyboard.down("w");
