@@ -39,7 +39,7 @@ export async function launch() {
 }
 
 /** Open a page, enter a nickname and wait for the world. `device` is a Playwright device name. */
-export async function join(browser, name, { device, viewport = { width: 1100, height: 700 }, mic = false } = {}) {
+export async function join(browser, name, { device, viewport = { width: 1100, height: 700 }, mic = false, onPage } = {}) {
   const ctx = await browser.newContext({
     ...(device ? devices[device] : { viewport }),
     ignoreHTTPSErrors: true,
@@ -48,6 +48,7 @@ export async function join(browser, name, { device, viewport = { width: 1100, he
   const page = await ctx.newPage();
   page.errors = [];
   page.on("pageerror", (e) => page.errors.push(e.message));
+  onPage?.(page);
   await page.goto(URL, { timeout: 90000 });
   await page.fill("#nick", name);
   await page.click("button.primary");

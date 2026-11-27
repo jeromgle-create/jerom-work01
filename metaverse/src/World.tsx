@@ -9,6 +9,7 @@ import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
 import { RIDES, ZONE_RECTS, seatEndU, seatPose } from "../shared/layout.js";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
+import Human from "./Human";
 
 const PORTAL_COOLDOWN_MS = 800;
 // Outdoors: pulled back and aiming ahead so the building stays in view. Indoors: steep dollhouse view.
@@ -62,6 +63,11 @@ function useDark() {
     return () => mq.removeEventListener("change", on);
   }, []);
   return dark;
+}
+
+/** A realistic animated person; the simple capsule shows while the model loads. */
+function Person({ color, riding }: { color: string; riding: () => boolean }) {
+  return <Human color={color} riding={riding} fallback={<Avatar color={color} />} />;
 }
 
 function Avatar({ color }: { color: string }) {
@@ -276,7 +282,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
 
   return (
     <group ref={group}>
-      <Avatar color={start.color} />
+      <Person color={start.color} riding={() => !!riding.current} />
     </group>
   );
 }
@@ -475,7 +481,7 @@ function RemotePlayer({ player }: { player: Player }) {
   });
   return (
     <group ref={group}>
-      <Avatar color={player.color} />
+      <Person color={player.color} riding={() => rides.has(player.id)} />
     </group>
   );
 }
