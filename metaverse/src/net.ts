@@ -16,7 +16,7 @@ export const input = {
 export const labelEls = new Map<string, HTMLDivElement>();
 
 /** Local player's current position (read by proximity voice). */
-export const selfPos = { x: 0, z: 0, y: 0 };
+export const selfPos = { x: 0, z: 0, y: 0, ry: 0 };
 
 /** Test hook: a pending teleport consumed by the local player (positions are still clamped by the server). */
 export const debugTeleport: { pending: { x: number; z: number } | null } = { pending: null };
@@ -28,3 +28,8 @@ export const rides = new Map<string, RideState>();
 /** Offset to convert local Date.now() into server time; set when joining. */
 export const clock = { offset: 0 };
 export const serverNow = () => Date.now() + clock.offset;
+
+/** Camera zoom chosen by pinch / mouse wheel (1 = default distance). */
+export const view = { zoom: 1 };
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 2.2;

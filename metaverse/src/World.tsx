@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { debugTeleport, input, labelEls, remoteTargets, rides, selfPos, serverNow, socket, type RideState } from "./net";
+import { ZOOM_MAX, ZOOM_MIN, debugTeleport, input, labelEls, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
@@ -183,17 +183,18 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     if (z !== zone.current || jumped) {
       if (z !== zone.current) onZone(z);
       zone.current = z;
-      camera.position.copy(pos.current).add(cam.offset); // cut, don't fly across the map
+      camera.position.copy(pos.current).addScaledVector(cam.offset, view.zoom); // cut, don't fly across the map
     }
     selfPos.x = pos.current.x;
     selfPos.z = pos.current.z;
     selfPos.y = pos.current.y;
+    selfPos.ry = ry.current;
     const g = group.current;
     if (g) {
       g.position.copy(pos.current);
       g.rotation.y = ry.current;
     }
-    const camTarget = pos.current.clone().add(cam.offset);
+    const camTarget = pos.current.clone().addScaledVector(cam.offset, view.zoom); // pinch / wheel zoom
     camera.position.lerp(camTarget, Math.min(1, dt * 5));
     camera.lookAt(pos.current.x, pos.current.y + cam.lookY, pos.current.z - cam.ahead);
     if (g) placeLabel(start.id, g, camera, size.width, size.height);
@@ -218,6 +219,48 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       <Avatar color={start.color} />
     </group>
   );
+}
+
+/** Two-finger pinch (touch) and mouse wheel change the camera distance. */
+function ZoomControls() {
+  const el = useThree((s) => s.gl.domElement);
+  useEffect(() => {
+    const clamp = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+    let startDist = 0;
+    let startZoom = 1;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        startDist = dist(e.touches);
+        startZoom = view.zoom;
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !startDist) return;
+      e.preventDefault();
+      view.zoom = clamp(startZoom * (startDist / dist(e.touches))); // fingers apart = closer
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) startDist = 0;
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      view.zoom = clamp(view.zoom * Math.pow(1.0015, e.deltaY));
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [el]);
+  return null;
 }
 
 function RemotePlayer({ player }: { player: Player }) {
@@ -304,6 +347,7 @@ export default function World({ selfId, selfStart, players }: Props) {
       {zone === "park" ? <Park dark={dark} /> : indoor ? <Interior zone={zone} dark={dark} /> : <School dark={dark} />}
       <LocalPlayer start={selfStart} onZone={setZone} />
       <RideVehicles />
+      <ZoomControls />
       {players
         .filter((p) => p.id !== selfId)
         .map((p) => (
