@@ -117,6 +117,21 @@ export const CAMPUS_DOORS = [
   { floor: "S1", label: "남관 입구", mat: { minX: -15.6, maxX: -12.4, minZ: -1.6, maxZ: -0.9 }, out: { x: -14, z: 0.4, ry: 0 } },
   { floor: "E1", label: "본관 현관", mat: { minX: 10.4, maxX: 13.6, minZ: 24.9, maxZ: 25.6 }, out: { x: 12, z: 27, ry: 0 } },
 ];
+// ---------- park next to the school (separate zone) ----------
+// A simplified take on 서울대공원: entrance plaza with the elephant-train stop (south), lake with
+// the train loop and sky lift (center), zoo (north-east), rose garden and greenhouse (west),
+// campsite and lawn (south-west / south-east). Local coordinates; world x = PARK.cx + x.
+export const PARK = { id: "park", cx: 2400, cz: 0, minX: 2330, maxX: 2470, minZ: -60, maxZ: 60, name: "서울대공원" };
+/** Mat just inside the school's main gate. */
+export const PARK_GATE_MAT = { minX: -7, maxX: -3, minZ: 32.9, maxZ: 34.5 };
+const P = (x) => PARK.cx + x;
+/** Park quick-travel stations (local coords): stepping on a mat rides to the other end. */
+export const PARK_RIDES = [
+  { name: "코끼리열차", a: { mat: [10, 14, 53.5, 55], land: [12, 57] }, b: { mat: [38, 42, -12, -10.5], land: [40, -8] } },
+  { name: "스카이리프트", a: { mat: [-16, -12, 35, 36.5], land: [-14, 39] }, b: { mat: [62, 66, -45, -43.5], land: [64, -41] } },
+];
+export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
+
 /** Where new players appear: around the middle of the field. */
 export const SPAWN = { x: -17, z: 17 };
 
@@ -124,19 +139,21 @@ export const SPAWN = { x: -17, z: 17 };
 /** @returns {string} "outdoor" or a floor id */
 export function zoneAt(x) {
   if (x < 120) return "outdoor";
+  if (x >= 2200) return "park";
   const i = Math.round((x - FIRST_CX) / ZONE_GAP);
   return FLOORS[Math.max(0, Math.min(FLOORS.length - 1, i))].id;
 }
 /** Walkable world rectangles (server clamp). */
 export const ZONE_RECTS = [
   OUTDOOR,
+  PARK,
   ...FLOORS.map((f) => ({ id: f.id, cx: f.cx, cz: f.cz, minX: f.cx + f.minX, maxX: f.cx + f.maxX, minZ: f.cz + f.minZ, maxZ: f.cz + f.maxZ })),
 ];
 
 /** Room under a world position (floor-local lookup), or null for the corridor/outdoors. */
 export function roomAt(x, z) {
   const id = zoneAt(x);
-  if (id === "outdoor") return null;
+  if (id === "outdoor" || id === "park") return null;
   const f = FLOOR_BY_ID[id];
   const lx = x - f.cx;
   const lz = z - f.cz;
@@ -146,7 +163,7 @@ export function roomAt(x, z) {
 /** Conversation space: walls separate rooms; open kinds count as the corridor. */
 export function locationKey(x, z) {
   const id = zoneAt(x);
-  if (id === "outdoor") return "outdoor";
+  if (id === "outdoor" || id === "park") return id;
   const r = roomAt(x, z);
   return r && !OPEN_KINDS.has(r.kind) ? r.key : `${id}:corridor`;
 }
@@ -154,7 +171,7 @@ export function locationKey(x, z) {
 // ---------- portals (world coordinates) ----------
 const STAIR_PAD_D = 1.6; // pads sit at the corridor end of the stairs cell
 /**
- * @typedef {{ from: string, minX: number, maxX: number, minZ: number, maxZ: number, to: { x: number, z: number, ry: number }, label: string, kind: "up"|"down"|"exit"|"enter" }} Portal
+ * @typedef {{ from: string, minX: number, maxX: number, minZ: number, maxZ: number, to: { x: number, z: number, ry: number }, label: string, kind: "up"|"down"|"exit"|"enter"|"ride" }} Portal
  * @type {Portal[]}
  */
 export const PORTALS = (() => {
@@ -182,6 +199,16 @@ export const PORTALS = (() => {
       out.push({ from: "outdoor", ...door.mat, to: { x: f.cx + (ex.minX + ex.maxX) / 2, z: f.cz + f.maxZ - 2.6, ry: Math.PI }, label: door.label, kind: "enter" });
     }
   }
+  // school gate <-> park entrance
+  out.push({ from: "outdoor", ...PARK_GATE_MAT, to: { x: P(0), z: 55.5, ry: Math.PI }, label: "서울대공원 가는 길", kind: "enter" });
+  const [ex0, ex1, ez0, ez1] = PARK_EXIT_MAT;
+  out.push({ from: "park", minX: P(ex0), maxX: P(ex1), minZ: ez0, maxZ: ez1, to: { x: -5, z: 31.4, ry: Math.PI }, label: "한빛초등학교로", kind: "exit" });
+  // rides inside the park (both directions)
+  for (const r of PARK_RIDES)
+    for (const [from, to] of [[r.a, r.b], [r.b, r.a]]) {
+      const [x0, x1, z0, z1] = from.mat;
+      out.push({ from: "park", minX: P(x0), maxX: P(x1), minZ: z0, maxZ: z1, to: { x: P(to.land[0]), z: to.land[1], ry: Math.PI }, label: r.name, kind: "ride" });
+    }
   return out;
 })();
 

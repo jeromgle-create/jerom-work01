@@ -5,6 +5,7 @@ import { debugTeleport, input, labelEls, remoteTargets, selfPos, socket } from "
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
+import Park, { resolvePark } from "./Park";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 
 const PORTAL_COOLDOWN_MS = 800;
@@ -17,11 +18,12 @@ const CAMERA = {
 };
 const COURTYARD_Z = -8.6;
 const camFor = (zone: ZoneId, z = 0) =>
-  zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
+  zone === "park" ? CAMERA.outdoor : zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
 
 function collide(pos: THREE.Vector3) {
   const zone = zoneAt(pos.x);
   if (zone === "outdoor") resolveCollisions(pos);
+  else if (zone === "park") resolvePark(pos);
   else resolveInterior(zone, pos);
 }
 
@@ -95,6 +97,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
   }, [start, camera, onZone]);
 
   useFrame(({ size }, dt) => {
+    let jumped = false; // teleported this frame (portal, ride, test hook): cut the camera
     const k = input.keys;
     let mx = input.joy.x;
     let mz = input.joy.y;
@@ -119,6 +122,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
         pos.current.set(portal.to.x, 0, portal.to.z);
         ry.current = portal.to.ry;
         lastSent.current.t = 0; // send the new position right away
+        jumped = true;
       }
     }
     if (debugTeleport.pending) {
@@ -126,12 +130,13 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       collide(pos.current);
       debugTeleport.pending = null;
       lastSent.current.t = 0;
+      jumped = true;
     }
     const z = zoneAt(pos.current.x);
     const cam = camFor(z, pos.current.z);
-    if (z !== zone.current) {
+    if (z !== zone.current || jumped) {
+      if (z !== zone.current) onZone(z);
       zone.current = z;
-      onZone(z);
       camera.position.copy(pos.current).add(cam.offset); // cut, don't fly across the map
     }
     selfPos.x = pos.current.x;
@@ -198,8 +203,9 @@ function RemotePlayer({ player }: { player: Player }) {
 export default function World({ selfId, selfStart, players }: Props) {
   const dark = useDark();
   const [zone, setZone] = useState<ZoneId>("outdoor");
-  const indoor = zone !== "outdoor";
+  const indoor = zone !== "outdoor" && zone !== "park";
   const bg = indoor ? (dark ? "#1b1d22" : "#3a3f47") : dark ? "#141a24" : "#cfe8ff";
+  const fogFar = indoor ? 60 : 130; // outdoors: let the mountains show through the haze
 
   useEffect(() => {
     const typing = (e: KeyboardEvent) => {
@@ -225,7 +231,7 @@ export default function World({ selfId, selfStart, players }: Props) {
   return (
     <Canvas shadows camera={{ fov: 50, position: [0, 9, 11] }} dpr={[1, 2]} className="canvas">
       <color attach="background" args={[bg]} />
-      <fog attach="fog" args={[bg, 25, 60]} />
+      <fog attach="fog" args={[bg, indoor ? 25 : 40, fogFar]} />
       <hemisphereLight args={[dark ? "#8090b0" : "#ffffff", dark ? "#202820" : "#88aa77", dark ? 0.6 : 0.9]} />
       <directionalLight
         position={[12, 20, 8]}
@@ -237,7 +243,7 @@ export default function World({ selfId, selfStart, players }: Props) {
         shadow-camera-top={30}
         shadow-camera-bottom={-30}
       />
-      {indoor ? <Interior zone={zone} dark={dark} /> : <School dark={dark} />}
+      {zone === "park" ? <Park dark={dark} /> : indoor ? <Interior zone={zone} dark={dark} /> : <School dark={dark} />}
       <LocalPlayer start={selfStart} onZone={setZone} />
       {players
         .filter((p) => p.id !== selfId)
