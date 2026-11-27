@@ -102,8 +102,11 @@ if (on("rides")) {
   check(ra.vehicle === rb.vehicle && ra.start === rb.start && ra.seat !== rb.seat, "same train, same departure, different seats", `${ra.vehicle} seats ${ra.seat}/${rb.seat}`);
   check((await place(a)).includes("출발까지"), "HUD shows the departure countdown", await place(a));
   await a.waitForFunction((s) => Date.now() > s + 4000, ra.start, { timeout: 30000 });
-  const [pa, pb] = [await pos(a), await pos(b)];
-  check(Math.hypot(pa.x - pb.x, pa.z - pb.z) < 1.5, "riding side by side", `${Math.hypot(pa.x - pb.x, pa.z - pb.z).toFixed(2)} m apart`);
+  // Same car = side by side. Positions are read from two pages that render at a few fps, so a
+  // moving train puts up to ~1.5 m between the two readings; allow for it.
+  const [pa, pb] = await Promise.all([pos(a), pos(b)]);
+  const gap = Math.hypot(pa.x - pb.x, pa.z - pb.z);
+  check(L.seatCar(ra.ride, ra.seat) === L.seatCar(rb.ride, rb.seat) && gap < 3, "riding side by side (same car)", `car ${L.seatCar(ra.ride, ra.seat)}/${L.seatCar(rb.ride, rb.seat)}, ${gap.toFixed(2)} m apart`);
   for (const p of [a, b]) await p.waitForFunction(() => !window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 40000 });
   const end = await pos(a);
   check(L.zoneAt(end.x) === "park" && end.z < 0, "both stepped off at the zoo stop");

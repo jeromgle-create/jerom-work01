@@ -4,7 +4,7 @@
 // without UVs. Grey-scale textures multiply the mesh / instance colour, so colours stay as they were.
 import * as THREE from "three";
 
-type Kind = "grass" | "soil" | "concrete" | "brick" | "pavers" | "roof" | "stone";
+type Kind = "grass" | "soil" | "concrete" | "brick" | "pavers" | "roof" | "stone" | "planks" | "grain" | "vinyl" | "terrazzo" | "plaster";
 
 // Deterministic noise so textures look the same every visit.
 function rng(seed: number) {
@@ -126,6 +126,51 @@ function paint(kind: Kind): HTMLCanvasElement {
       ctx.fillRect(i * s - 1, 0, 2, n);
       ctx.fillRect(0, i * s - 1, n, 2);
     }
+  } else if (kind === "planks" || kind === "grain") {
+    // wood: long boards (floor) or one board (furniture) with grain lines
+    const boards = kind === "planks" ? 8 : 1;
+    const bh = n / boards;
+    for (let b = 0; b < boards; b++) {
+      const tone = 200 + rand() * 50;
+      ctx.fillStyle = `rgb(${tone},${tone},${tone})`;
+      ctx.fillRect(0, b * bh, n, bh);
+      for (let i = 0; i < (kind === "planks" ? 26 : 90); i++) {
+        const y = b * bh + rand() * bh;
+        const g = Math.round(tone - 25 - rand() * 35);
+        ctx.strokeStyle = `rgba(${g},${g},${g},${0.25 + rand() * 0.35})`;
+        ctx.lineWidth = 0.6 + rand() * 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        for (let x = 0; x <= n; x += 32) ctx.lineTo(x, y + Math.sin(x / 60 + i) * 2 * rand());
+        ctx.stroke();
+      }
+      if (kind === "planks") {
+        ctx.fillStyle = "rgba(90,90,90,0.8)"; // board seams and staggered butt joints
+        ctx.fillRect(0, b * bh, n, 2);
+        const j = (b * 0.37 + rand() * 0.5) % 1;
+        ctx.fillRect(j * n, b * bh, 2, bh);
+      }
+    }
+  } else if (kind === "vinyl") {
+    mottle(ctx, n, rand, 240, 8, [3, 10]);
+    specks(6000, 1.5, 200, 255, 0.35);
+    ctx.fillStyle = "rgba(160,160,160,0.7)";
+    for (let i = 0; i <= 4; i++) {
+      ctx.fillRect((i * n) / 4 - 1, 0, 2, n);
+      ctx.fillRect(0, (i * n) / 4 - 1, n, 2);
+    }
+  } else if (kind === "terrazzo") {
+    mottle(ctx, n, rand, 242, 6, [3, 8]);
+    for (let i = 0; i < 2600; i++) {
+      const g = Math.round(150 + rand() * 105);
+      ctx.fillStyle = `rgba(${g},${g},${g},0.8)`;
+      ctx.beginPath();
+      ctx.ellipse(rand() * n, rand() * n, 1 + rand() * 3, 1 + rand() * 2.5, rand() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (kind === "plaster") {
+    mottle(ctx, n, rand, 246, 6, [2, 7, 20]);
+    specks(3000, 1, 220, 255, 0.25);
   } else if (kind === "roof") {
     mottle(ctx, n, rand, 238, 14, [3, 9]);
     ctx.fillStyle = "rgba(170,170,170,0.5)";
