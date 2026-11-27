@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls, selfPos, debugTeleport } from "./net";
+import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, type RideState } from "./net";
+import { RIDES } from "../shared/layout.js";
 import { locationAt } from "./zones";
 import type { ChatMsg, ChatScope, Member, Player } from "./types";
 import { chatReducer, initialChat } from "./chatState";
@@ -8,7 +9,7 @@ import Chat from "./Chat";
 import Joystick from "./Joystick";
 import { VoiceChat } from "./voice";
 
-type JoinAck = { ok: true; selfId: string; players: Player[] } | { ok: false; error: string };
+type JoinAck = { ok: true; selfId: string; now: number; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
 type VoiceMode = "off" | "joining" | "live" | "muted";
 
@@ -55,9 +56,12 @@ export default function App() {
         return;
       }
       remoteTargets.clear();
+      rides.clear();
+      clock.offset = ack.now - Date.now();
       const map: Record<string, Player> = {};
       for (const p of ack.players) {
         map[p.id] = p;
+        if (p.ride) rides.set(p.id, p.ride);
         if (p.id !== ack.selfId) remoteTargets.set(p.id, { x: p.x, z: p.z, ry: p.ry });
       }
       setSelfId(ack.selfId);
@@ -88,6 +92,7 @@ export default function App() {
     };
     const onLeft = (id: string) => {
       remoteTargets.delete(id);
+      rides.delete(id);
       voiceRef.current?.closePeer(id);
       setPlayers((prev) => {
         const next = { ...prev };
@@ -128,7 +133,13 @@ export default function App() {
     socket.on("system", onSystem);
     socket.on("voice:state", onVoiceState);
     socket.on("group:state", onGroup);
+    const onRide = (r: { id: string } & (RideState | { ride: null })) => {
+      if (r.ride === null) rides.delete(r.id);
+      else rides.set(r.id, r as RideState);
+    };
+    socket.on("ride", onRide);
     return () => {
+      socket.off("ride", onRide);
       socket.off("group:state", onGroup);
       socket.off("voice:state", onVoiceState);
       socket.off("connect", onConnect);
@@ -176,7 +187,11 @@ export default function App() {
     if (!joined) return;
     const t = setInterval(() => {
       const here = locationAt(selfPos.x, selfPos.z);
-      setPlace(here.label);
+      const mine = rides.get(socket.id ?? "");
+      if (mine) {
+        const left = Math.max(0, Math.ceil((mine.start + RIDES[mine.ride].duration - serverNow()) / 1000));
+        setPlace(`${RIDES[mine.ride].name} 타는 중 · ${left}초 남음`);
+      } else setPlace(here.label);
       // Hint for the "근처" tab: others within 3m in the same room (the server decides delivery).
       let n = 0;
       for (const p of remoteTargets.values())
@@ -192,6 +207,7 @@ export default function App() {
     w.__mvDebug = {
       teleport: (x: number, z: number) => (debugTeleport.pending = { x, z }),
       pos: () => ({ ...selfPos }),
+      rides: () => Object.fromEntries(rides),
     };
   }, [voice]);
 

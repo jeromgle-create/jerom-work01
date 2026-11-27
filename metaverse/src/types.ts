@@ -8,6 +8,7 @@ export type Player = {
   ry: number;
   voice?: boolean;
   muted?: boolean;
+  ride?: { ride: number; dir: "ab" | "ba"; start: number } | null;
 };
 export type ChatScope = "near" | "group" | "all";
 export type ChatMsg = {

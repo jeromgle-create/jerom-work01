@@ -7,6 +7,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Box, BoxInstances, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
 import { PARK, PARK_EXIT_MAT, PARK_RIDES } from "./zones";
+import { LIFT_LINE, RIDES, ridePose } from "../shared/layout.js";
+import { rides, serverNow } from "./net";
 
 type Item = { p: V3; s: V3; c: string };
 type Rect = [number, number, number, number]; // minX, maxX, minZ, maxZ
@@ -298,6 +300,99 @@ function SwanBoats() {
   );
 }
 
+// ---------- vehicles that carry riders ----------
+const POOL = 6;
+const CAR_GAP = 0.04; // trailing train cars, as a fraction of the route
+const TRAIN_COLORS = ["#8d99ae", "#e76f51", "#2a9d8f"];
+
+function TrainCar({ head, color }: { head: boolean; color: string }) {
+  return (
+    <>
+      <Box p={[0, 0.7, 0]} s={[1.6, 1, 2.6]} c={color} />
+      <Box p={[0, 2.5, 0]} s={[1.7, 0.12, 2.7]} c="#ffffff" />
+      {[-0.65, 0.65].flatMap((x) => [-1.15, 1.15].map((z) => <Box key={`${x}${z}`} p={[x, 1.85, z]} s={[0.08, 1.3, 0.08]} c="#ffffff" />))}
+      {head && (
+        <>
+          <Box p={[0, 1.1, 1.6]} s={[1.2, 1.2, 0.6]} c="#8d99ae" />
+          <Box p={[0, 0.5, 2]} s={[0.25, 0.9, 0.25]} c="#7d8597" />
+          <Box p={[-0.75, 1.2, 1.5]} s={[0.1, 0.8, 0.7]} c="#a3aab8" />
+          <Box p={[0.75, 1.2, 1.5]} s={[0.1, 0.8, 0.7]} c="#a3aab8" />
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Trains and lift chairs for everyone currently riding (this player included). Poses come from the
+ * shared ride paths and the server start time, so every viewer sees the same thing.
+ */
+export function RideVehicles() {
+  const trains = useRef<(THREE.Group | null)[][]>(Array.from({ length: POOL }, () => []));
+  const chairs = useRef<(THREE.Group | null)[]>([]);
+  const hangers = useRef<(THREE.Mesh | null)[]>([]);
+  useFrame(() => {
+    let ti = 0;
+    let ci = 0;
+    const now = serverNow();
+    for (const r of rides.values()) {
+      const spec = RIDES[r.ride];
+      const u = (now - r.start) / spec.duration;
+      if (u < 0 || u >= 1) continue;
+      if (spec.vehicle === "train" && ti < POOL) {
+        trains.current[ti].forEach((g, k) => {
+          if (!g) return;
+          const p = ridePose(r.ride, r.dir, Math.max(0, u - k * CAR_GAP));
+          g.visible = u - k * CAR_GAP >= -0.001 || k === 0;
+          g.position.set(p.x - PARK.cx, 0, p.z - PARK.cz);
+          g.rotation.y = p.ry;
+        });
+        ti++;
+      } else if (spec.vehicle === "chair" && ci < POOL) {
+        const g = chairs.current[ci];
+        const h = hangers.current[ci];
+        const p = ridePose(r.ride, r.dir, u);
+        if (g && h) {
+          g.visible = true;
+          g.position.set(p.x - PARK.cx, p.y + 0.35, p.z - PARK.cz);
+          g.rotation.y = p.ry;
+          const len = Math.max(0.3, LIFT_LINE.y - (p.y + 0.35));
+          h.scale.y = len;
+          h.position.y = len / 2;
+        }
+        ci++;
+      }
+    }
+    for (; ti < POOL; ti++) trains.current[ti].forEach((g) => g && (g.visible = false));
+    for (; ci < POOL; ci++) {
+      const g = chairs.current[ci];
+      if (g) g.visible = false;
+    }
+  });
+  return (
+    <group position={[PARK.cx, 0, PARK.cz]}>
+      {Array.from({ length: POOL }, (_, i) =>
+        TRAIN_COLORS.map((c, k) => (
+          <group key={`t${i}${k}`} visible={false} ref={(el) => (trains.current[i][k] = el)}>
+            <TrainCar head={k === 0} color={c} />
+          </group>
+        )),
+      )}
+      {Array.from({ length: POOL }, (_, i) => (
+        <group key={`c${i}`} visible={false} ref={(el) => (chairs.current[i] = el)}>
+          <mesh ref={(el) => (hangers.current[i] = el)}>
+            <boxGeometry args={[0.05, 1, 0.05]} />
+            <meshStandardMaterial color="#333" />
+          </mesh>
+          <Box p={[0, 0, 0]} s={[1.1, 0.12, 0.6]} c="#ffb703" />
+          <Box p={[0, 0.35, -0.27]} s={[1.1, 0.6, 0.06]} c="#ffb703" />
+          <Box p={[0, -0.1, 0.32]} s={[1.1, 0.06, 0.06]} c="#333" />
+        </group>
+      ))}
+    </group>
+  );
+}
+
 // ---------- trees (instanced) ----------
 function TreeInstances({ spots }: { spots: [number, number][] }) {
   const trunks = useRef<THREE.InstancedMesh>(null);
@@ -435,10 +530,10 @@ function Signs() {
       <Sign p={[0, 4.6, 46.52]} size={[9, 0.7]} text={PARK.name} bg="#2a9d8f" fg="#ffffff" />
       {s([-11, 1.6, 53.25], "매표소", "#ffffff", "#2a9d8f", 2)}
       {s([0, 1.6, 59.4], "▼ 한빛초등학교로 돌아가기", "#3bb273", "#ffffff", 4.6)}
-      {s([12, 2.4, 53.2], "코끼리열차 → 동물원", "#e09f3e", "#ffffff", 4.2)}
-      {s([40, 2.4, -12.3], "코끼리열차 → 정문", "#e09f3e", "#ffffff", 4)}
-      {s([-14, 4, 37.4], "스카이리프트 → 동물원 정상", "#457b9d", "#ffffff", 4.6)}
-      {s([64, 4, -43.2], "스카이리프트 → 호숫가", "#457b9d", "#ffffff", 4)}
+      {s([12, 2.4, 53.2], "코끼리열차 타기 → 동물원", "#e09f3e", "#ffffff", 4.2)}
+      {s([40, 2.4, -12.3], "코끼리열차 타기 → 정문", "#e09f3e", "#ffffff", 4)}
+      {s([-14, 4, 37.4], "스카이리프트 타기 → 동물원 정상", "#457b9d", "#ffffff", 4.6)}
+      {s([64, 4, -43.2], "스카이리프트 타기 → 호숫가", "#457b9d", "#ffffff", 4)}
       {s([LAKE.x, 1.2, LAKE.z + LAKE.r + 1.2], "대공원 호수 · 둘레길", "#e0fbfc", "#1d3557", 4)}
       {s([45, 2.2, -13.6], "동물원", "#ffb703", "#3d2c00", 3)}
       {PENS.map((p) => s([(p.rect[0] + p.rect[1]) / 2, 1.8, p.rect[3] + 0.25], p.name, "#fff3b0", "#7a4b00", Math.max(1.6, p.name.length * 0.55)))}

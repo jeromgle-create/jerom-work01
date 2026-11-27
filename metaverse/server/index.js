@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { SPAWN, ZONE_RECTS, locationKey } from "../shared/layout.js";
+import { PARK, PARK_RIDES, RIDES, SPAWN, ZONE_RECTS, locationKey } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -71,7 +71,7 @@ const clean = (s, max) =>
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim()
     .slice(0, max);
-const publicPlayer = ({ id, name, color, x, z, ry, voice, muted }) => ({ id, name, color, x, z, ry, voice, muted });
+const publicPlayer = ({ id, name, color, x, z, ry, voice, muted, ride }) => ({ id, name, color, x, z, ry, voice, muted, ride: ride ?? null });
 const voiceState = (p) => ({ id: p.id, voice: p.voice, muted: p.muted });
 
 io.on("connection", (socket) => {
@@ -97,9 +97,11 @@ io.on("connection", (socket) => {
       voice: false,
       muted: false,
       group: null,
+      ride: null, // { ride, dir, start } while sitting in the elephant train or a lift chair
+      rideTimer: null,
     };
     players.set(socket.id, player);
-    ack?.({ ok: true, selfId: socket.id, players: [...players.values()].map(publicPlayer) });
+    ack?.({ ok: true, selfId: socket.id, now: Date.now(), players: [...players.values()].map(publicPlayer) });
     socket.broadcast.emit("playerJoined", publicPlayer(player));
     io.emit("system", { text: `${name} 님이 입장했습니다.`, ts: Date.now() });
   });
@@ -186,9 +188,39 @@ io.on("connection", (socket) => {
     io.to(target.id).emit("rtc:signal", { from: p.id, data: m.data });
   });
 
+  // --- Rides: the server stamps the start time; every client derives the rider's pose from it. ---
+  const endRide = (p) => {
+    if (!p.ride) return;
+    clearTimeout(p.rideTimer);
+    p.ride = null;
+    p.rideTimer = null;
+    io.emit("ride", { id: p.id, ride: null });
+  };
+  socket.on("ride:start", (m, ack) => {
+    const p = players.get(socket.id);
+    const ride = m?.ride;
+    const dir = m?.dir === "ba" ? "ba" : "ab";
+    if (!p || !Number.isInteger(ride) || !RIDES[ride] || p.ride) return ack?.({ ok: false });
+    // must be standing at the boarding station
+    const st = dir === "ab" ? PARK_RIDES[ride].a : PARK_RIDES[ride].b;
+    const [x0, x1, z0, z1] = st.mat;
+    const cx = PARK.cx + (x0 + x1) / 2;
+    const cz = (z0 + z1) / 2;
+    if (Math.hypot(p.x - cx, p.z - cz) > 6) return ack?.({ ok: false });
+    p.ride = { ride, dir, start: Date.now() };
+    p.rideTimer = setTimeout(() => endRide(p), RIDES[ride].duration + 1500); // safety net if the client never reports arrival
+    io.emit("ride", { id: p.id, ...p.ride });
+    ack?.({ ok: true, start: p.ride.start });
+  });
+  socket.on("ride:end", () => {
+    const p = players.get(socket.id);
+    if (p) endRide(p);
+  });
+
   socket.on("disconnect", () => {
     const p = players.get(socket.id);
     if (!p) return;
+    clearTimeout(p.rideTimer);
     players.delete(socket.id);
     dirty.delete(socket.id);
     io.emit("playerLeft", socket.id);
