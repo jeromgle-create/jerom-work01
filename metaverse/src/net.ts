@@ -30,7 +30,14 @@ export const clock = { offset: 0 };
 export const serverNow = () => Date.now() + clock.offset;
 
 /** Camera zoom chosen by pinch / mouse wheel (1 = default distance). */
-export const view = { zoom: 1 };
+export const view = {
+  zoom: 1,
+  /** Camera pan from dragging the screen, as a ground offset from the player (world units). */
+  pan: { x: 0, z: 0 },
+  dragging: false,
+  /** Ease the camera back onto the player ("내 위치로"). */
+  recenter: false,
+};
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.2;
 

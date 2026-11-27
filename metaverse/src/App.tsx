@@ -44,6 +44,7 @@ export default function App() {
   if (!voiceRef.current) voiceRef.current = new VoiceChat(setSpeaking);
   const voice = voiceRef.current;
   const [place, setPlace] = useState("");
+  const [panned, setPanned] = useState(false);
 
   const doJoin = useCallback(() => {
     const info = joinInfo.current;
@@ -206,6 +207,7 @@ export default function App() {
       for (const p of remoteTargets.values())
         if (Math.hypot(p.x - selfPos.x, p.z - selfPos.z) <= 3 && locationAt(p.x, p.z).key === here.key) n++;
       setNearCount(n);
+      setPanned(Math.hypot(view.pan.x, view.pan.z) > 1.5 && !view.recenter);
     }, 250);
     return () => clearInterval(t);
   }, [joined]);
@@ -219,6 +221,7 @@ export default function App() {
       rides: () => Object.fromEntries(rides),
       zoom: () => view.zoom,
       order: () => ({ ...moveOrder }),
+      pan: () => ({ ...view.pan, dragging: view.dragging }),
     };
   }, [voice]);
 
@@ -320,6 +323,11 @@ export default function App() {
           </div>
         )}
         <Minimap players={players} selfId={selfId} />
+        {panned && (
+          <button type="button" className="recenter" onClick={() => (view.recenter = true)}>
+            📍 내 위치로
+          </button>
+        )}
       </div>
       <div className="hud-top">
         <span className={connected ? "dot ok" : "dot"} />

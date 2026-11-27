@@ -585,7 +585,7 @@ export default function Park({ dark }: { dark: boolean }) {
   return (
     <group position={[PARK.cx, 0, PARK.cz]}>
       <mesh rotation-x={-Math.PI / 2} receiveShadow>
-        <planeGeometry args={[2 * HW + 40, 2 * HD + 40]} />
+        <planeGeometry args={[2 * HW + 120, 2 * HD + 120]} />
         <meshStandardMaterial color={dark ? "#33452f" : "#9cc77e"} />
       </mesh>
       <mesh rotation-x={-Math.PI / 2} position={[LAKE.x, 0.02, LAKE.z]}>
