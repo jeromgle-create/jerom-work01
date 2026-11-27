@@ -57,7 +57,11 @@ export async function join(browser, name, { device, viewport = { width: 1100, he
 }
 
 // window.__mvDebug test hooks (see src/App.tsx)
-export const teleport = (p, x, z) => p.evaluate(([x, z]) => window.__mvDebug.teleport(x, z), [x, z]);
+export const teleport = (p, x, z) =>
+  p.evaluate(([x, z]) => {
+    if (!window.__mvDebug.teleport) throw new Error("no teleport hook: build with VITE_MV_DEBUG=1 (bash tests/run-all.sh)");
+    window.__mvDebug.teleport(x, z);
+  }, [x, z]);
 export const pos = (p) => p.evaluate(() => window.__mvDebug.pos());
 export const rides = (p) => p.evaluate(() => window.__mvDebug.rides());
 export const order = (p) => p.evaluate(() => window.__mvDebug.order());
