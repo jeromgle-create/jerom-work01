@@ -389,6 +389,18 @@ function MoveMarker() {
   );
 }
 
+/** Push the fog back as the camera zooms out, so a far view stays clear instead of hazy. */
+function FogFollowsZoom({ near, far }: { near: number; far: number }) {
+  useFrame(({ scene }) => {
+    const fog = scene.fog as THREE.Fog | null;
+    if (!fog) return;
+    const k = Math.max(1, view.zoom);
+    fog.near = near * k;
+    fog.far = far * k;
+  });
+  return null;
+}
+
 function ZoomControls() {
   const el = useThree((s) => s.gl.domElement);
   useEffect(() => {
@@ -500,6 +512,7 @@ export default function World({ selfId, selfStart, players }: Props) {
     <Canvas shadows camera={{ fov: 50, position: [0, 9, 11] }} dpr={[1, 2]} className="canvas">
       <color attach="background" args={[bg]} />
       <fog attach="fog" args={[bg, indoor ? 25 : 40, fogFar]} />
+      <FogFollowsZoom near={indoor ? 25 : 40} far={fogFar} />
       <hemisphereLight args={[dark ? "#8090b0" : "#ffffff", dark ? "#202820" : "#88aa77", dark ? 0.6 : 0.9]} />
       <directionalLight
         position={[12, 20, 8]}
