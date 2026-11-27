@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, type RideState } from "./net";
+import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, type RideState } from "./net";
 import { RIDES } from "../shared/layout.js";
 import { locationAt } from "./zones";
 import type { ChatMsg, ChatScope, Member, Player } from "./types";
@@ -8,6 +8,7 @@ import World from "./World";
 import Chat from "./Chat";
 import Joystick from "./Joystick";
 import { VoiceChat } from "./voice";
+import Minimap from "./Minimap";
 
 type JoinAck = { ok: true; selfId: string; now: number; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
@@ -216,6 +217,7 @@ export default function App() {
       teleport: (x: number, z: number) => (debugTeleport.pending = { x, z }),
       pos: () => ({ ...selfPos }),
       rides: () => Object.fromEntries(rides),
+      zoom: () => view.zoom,
     };
   }, [voice]);
 
@@ -310,11 +312,14 @@ export default function App() {
           </div>
         ))}
       </div>
-      {place && (
-        <div className="hud-place" aria-live="polite">
-          📍 {place}
-        </div>
-      )}
+      <div className="hud-left">
+        {place && (
+          <div className="hud-place" aria-live="polite">
+            📍 {place}
+          </div>
+        )}
+        <Minimap players={players} selfId={selfId} />
+      </div>
       <div className="hud-top">
         <span className={connected ? "dot ok" : "dot"} />
         {connected ? `접속자 ${list.length}명` : "재연결 중…"}

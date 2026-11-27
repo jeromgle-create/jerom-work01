@@ -16,12 +16,12 @@ type Rect = [number, number, number, number]; // minX, maxX, minZ, maxZ
 
 const HW = (PARK.maxX - PARK.minX) / 2;
 const HD = (PARK.maxZ - PARK.minZ) / 2;
-const LAKE = { x: 8, z: 4, r: 16 };
-const LOOP = { x: 8, z: 4, rx: 27, rz: 24 }; // train road around the lake
+export const LAKE = { x: 8, z: 4, r: 16 };
+export const LOOP = { x: 8, z: 4, rx: 27, rz: 24 }; // train road around the lake
 const LIFT = { a: new THREE.Vector3(-14, 0, 37.5), b: new THREE.Vector3(64, 0, -46), y: 9 };
 
 type Pen = { name: string; rect: Rect; ground: string; animal: "giraffe" | "elephant" | "lion" | "zebra" | "penguin" | "flamingo" | "rabbit"; count: number };
-const PENS: Pen[] = [
+export const PENS: Pen[] = [
   { name: "기린", rect: [22, 34, -32, -18], ground: "#c9b27c", animal: "giraffe", count: 2 },
   { name: "코끼리", rect: [38, 52, -32, -18], ground: "#b59b74", animal: "elephant", count: 2 },
   { name: "사자", rect: [56, 68, -32, -18], ground: "#d4b483", animal: "lion", count: 2 },
@@ -30,9 +30,9 @@ const PENS: Pen[] = [
   { name: "홍학", rect: [50, 58, -54, -40], ground: "#9ad1d4", animal: "flamingo", count: 5 },
   { name: "어린이동물원", rect: [52, 66, -12, -2], ground: "#cfe1b9", animal: "rabbit", count: 6 },
 ];
-const GREENHOUSE = { x: -48, z: -40, w: 20, d: 12 };
-const FOUNTAIN = { x: -34, z: -4, r: 2.2 };
-const TENTS: [number, number, string][] = [];
+export const GREENHOUSE = { x: -48, z: -40, w: 20, d: 12 };
+export const FOUNTAIN = { x: -34, z: -4, r: 2.2 };
+export const TENTS: [number, number, string][] = [];
 for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) TENTS.push([-62 + i * 8, 30 + j * 9, ["#e76f51", "#2a9d8f", "#e9c46a", "#457b9d"][(i + j) % 4]]);
 const TREES: [number, number][] = (() => {
   const out: [number, number][] = [];

@@ -13,19 +13,19 @@ type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
 const rect = (minX: number, maxX: number, minZ: number, maxZ: number): Rect => ({ minX, maxX, minZ, maxZ });
 
 // ---------- placement ----------
-const NORTH_WING = { ...rect(-36, 2, -26, -19), h: 12, label: "북관" };
-const SOUTH_WING = { ...rect(-30, 2, -9, -2), h: 12, label: "남관" };
-const CONNECTOR = { ...rect(2, 8, -26, -2), h: 12, label: "중앙현관" };
-const MAIN = { ...rect(8, 36, -26, 8), h: 15, label: SCHOOL_NAME };
-const KINDER = { ...rect(8, 20, 8, 24.5), h: 6, label: "유치원 · 현관" };
-const GYM = { ...rect(21, 36, 9, 24), h: 6 };
-const FIELD = rect(-36, 2, 7, 30);
+export const NORTH_WING = { ...rect(-36, 2, -26, -19), h: 12, label: "북관" };
+export const SOUTH_WING = { ...rect(-30, 2, -9, -2), h: 12, label: "남관" };
+export const CONNECTOR = { ...rect(2, 8, -26, -2), h: 12, label: "중앙현관" };
+export const MAIN = { ...rect(8, 36, -26, 8), h: 15, label: SCHOOL_NAME };
+export const KINDER = { ...rect(8, 20, 8, 24.5), h: 6, label: "유치원 · 현관" };
+export const GYM = { ...rect(21, 36, 9, 24), h: 6 };
+export const FIELD = rect(-36, 2, 7, 30);
 const FIELD_C = { x: -17, z: 18.5 };
-const STANDS_N = [rect(-34, -22, 3, 6.5), rect(-12, -2, 3, 6.5)];
-const PODIUM = rect(-18, -14, 3, 6.5);
+export const STANDS_N = [rect(-34, -22, 3, 6.5), rect(-12, -2, 3, 6.5)];
+export const PODIUM = rect(-18, -14, 3, 6.5);
 const FLAG = { x: -20, z: 4.8 };
-const STANDS_E = rect(3, 6, 9, 28);
-const GATE = { minX: -8, maxX: -2 };
+export const STANDS_E = rect(3, 6, 9, 28);
+export const GATE = { minX: -8, maxX: -2 };
 const BACK_GATE = { minX: -40, maxX: -36 };
 
 const COLLIDERS: Collider[] = [
