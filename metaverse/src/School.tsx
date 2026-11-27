@@ -6,7 +6,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Box, BoxInstances, Pole, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
-import { CAMPUS_DOORS, OUTDOOR, SCHOOL_NAME } from "./zones";
+import { CAMPUS_DOORS, OUTDOOR, PARK, PARK_GATE_MAT, SCHOOL_NAME } from "./zones";
 
 type Item = { p: V3; s: V3; c: string };
 type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -281,6 +281,9 @@ function Grounds({ dark }: { dark: boolean }) {
     for (const z of [22.9, 25.1]) for (const x of [-39, -37.6]) out.push({ p: [x, 0.75, z], s: [0.08, 1.5, 0.08], c: "#6c7a89" });
     // flowerbeds along the south wall
     out.push({ p: [-23, 0.2, 31.5], s: [26, 0.4, 0.8], c: "#5b3f2a" }, { p: [21, 0.2, 31.5], s: [30, 0.4, 0.8], c: "#5b3f2a" });
+    // mat to the park, just inside the main gate
+    const g = PARK_GATE_MAT;
+    out.push({ p: [(g.minX + g.maxX) / 2, 0.04, (g.minZ + Math.min(g.maxZ, OUTDOOR.maxZ + 0.4)) / 2], s: [g.maxX - g.minX, 0.02, Math.min(g.maxZ, OUTDOOR.maxZ + 0.4) - g.minZ], c: "#e09f3e" });
     // entry mats
     for (const d of CAMPUS_DOORS) out.push({ p: [(d.mat.minX + d.mat.maxX) / 2, 0.04, (d.mat.minZ + d.mat.maxZ) / 2], s: [d.mat.maxX - d.mat.minX, 0.02, d.mat.maxZ - d.mat.minZ + 0.4], c: "#3bb273" });
     return out;
@@ -290,6 +293,7 @@ function Grounds({ dark }: { dark: boolean }) {
       <BoxInstances items={items} />
       <Sign p={[(GATE.minX + GATE.maxX) / 2, 3.1, OUTDOOR.maxZ + 0.62]} size={[6, 0.6]} text={`${SCHOOL_NAME} 정문`} bg="#2f5f9e" fg="#ffffff" />
       <Sign p={[1.5, 1.6, 33.55]} size={[2.2, 0.45]} text="보안관실" bg="#ffffff" fg="#2f5f9e" />
+      <Sign p={[(GATE.minX + GATE.maxX) / 2, 4.0, OUTDOOR.maxZ + 0.62]} size={[4.6, 0.55]} text={`▼ ${PARK.name} 가는 길`} bg="#e09f3e" fg="#ffffff" />
       <Sign p={[-38.5, 2.9, -29.95]} size={[2.4, 0.45]} text="후문 · 보안관실" bg="#ffffff" fg="#2f5f9e" />
       <Sign p={[38, 2.5, -28.45]} size={[2.6, 0.45]} text="분리수거장" bg="#ffffff" fg="#2a9d8f" />
       <Sign p={[-38.3, 1.3, 19.2]} size={[2.6, 0.45]} text="모래 놀이터" bg="#fff3b0" fg="#7a4b00" />
@@ -337,6 +341,28 @@ COLLIDERS.push(
   ...[2, -6, -14].map((z) => circle(-38.5, z, 0.5)),
 );
 
+/** Wooded hills of the neighbouring park, seen beyond the campus walls. */
+function Backdrop({ dark }: { dark: boolean }) {
+  const hills: [number, number, number, number][] = [
+    [-70, -78, 22, 30],
+    [-25, -92, 30, 40],
+    [20, -86, 26, 34],
+    [65, -74, 22, 28],
+    [78, -20, 18, 24],
+    [82, 25, 16, 22],
+  ];
+  return (
+    <>
+      {hills.map(([x, z, h, r], i) => (
+        <mesh key={i} position={[x, h / 2 - 1, z]}>
+          <coneGeometry args={[r, h, 7]} />
+          <meshStandardMaterial color={dark ? "#24352a" : ["#5a8f5c", "#4f7f52", "#6a9f62"][i % 3]} flatShading />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 export default function School({ dark }: { dark: boolean }) {
   const doorX = (floor: string) => {
     const d = CAMPUS_DOORS.find((c) => c.floor === floor)!;
@@ -364,6 +390,7 @@ export default function School({ dark }: { dark: boolean }) {
       <Courtyard dark={dark} />
       <Grounds dark={dark} />
       <Trees />
+      <Backdrop dark={dark} />
     </>
   );
 }
