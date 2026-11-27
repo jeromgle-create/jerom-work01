@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { CAR_GAP, PARK, PARK_RIDES, RIDES, SPAWN, ZONE_RECTS, locationKey, seatCar } from "../shared/layout.js";
+import { CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -22,6 +22,17 @@ const GROUP_TICK_MS = 300;
 const GROUP_DWELL_MS = 1500; // must stay close this long to form a meeting (ignores walk-bys and spawn overlap)
 const MAX_VOICE = Number(process.env.MAX_VOICE) || 8; // peer-to-peer mesh: keep small
 const SIGNAL_MAX = 20000; // bytes of JSON per WebRTC signaling message
+// Movement check: players walk at 6 m/s. Each player has a distance budget that refills at
+// MOVE_SPEED (walking speed + slack for network jitter) up to MOVE_BURST metres; a move that needs
+// more is a jump and is refused (the client is snapped back) unless it goes through a door/stairs
+// portal. While riding, the server places the player on the ride itself.
+// MV_ALLOW_TELEPORT=1 turns the check off for the test build's teleport hook (never on Render).
+const MOVE_SPEED = 9;
+const MOVE_BURST = 12; // ~2 s of walking: absorbs network hiccups (moves arriving in a bunch)
+const MOVE_SLACK = 0.5; // collision push-out
+const PORTAL_REACH = 3; // how far from a portal mat / landing a jump through it may start / end
+const ALLOW_TELEPORT = process.env.MV_ALLOW_TELEPORT === "1";
+const CORRECT_MS = 500; // at most one snap-back message per player per this many ms
 // ICE servers for WebRTC. Set ICE_SERVERS to a JSON array to add a TURN relay later without code changes.
 const ICE_SERVERS = (() => {
   try {
@@ -53,6 +64,15 @@ const dirty = new Set();
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 // locationKey (from shared/layout.js): walls separate conversations; open areas count as the corridor.
+
+/** Distance from a point to a rectangle (0 inside). */
+const rectDist = (x, z, r) => Math.hypot(Math.max(r.minX - x, 0, x - r.maxX), Math.max(r.minZ - z, 0, z - r.maxZ));
+/** A long jump is allowed when it starts at a door/stairs mat and ends at that mat's landing. */
+function throughPortal(p, c) {
+  return PORTALS.some(
+    (pt) => pt.kind !== "ride" && rectDist(p.x, p.z, pt) <= PORTAL_REACH && Math.hypot(c.x - pt.to.x, c.z - pt.to.z) <= PORTAL_REACH,
+  );
+}
 
 /** Clamp a position into the nearest walkable zone. */
 function clampToZones(x, z) {
@@ -99,6 +119,9 @@ io.on("connection", (socket) => {
       group: null,
       ride: null, // { ride, dir, start, vehicle, seat } while sitting in the elephant train or a lift chair
       rideTimer: null,
+      budget: MOVE_BURST, // metres the player may still move right now (see MOVE_SPEED)
+      lastMoveAt: Date.now(),
+      lastCorrect: 0,
     };
     players.set(socket.id, player);
     ack?.({ ok: true, selfId: socket.id, now: Date.now(), players: [...players.values()].map(publicPlayer) });
@@ -109,7 +132,33 @@ io.on("connection", (socket) => {
   socket.on("move", (m) => {
     const p = players.get(socket.id);
     if (!p) return;
+    const now = Date.now();
+    p.budget = Math.min(MOVE_BURST, p.budget + (MOVE_SPEED * (now - p.lastMoveAt)) / 1000);
+    p.lastMoveAt = now;
+    if (p.ride) {
+      // Seated: the ride decides where the player is.
+      const r = p.ride;
+      const u = clamp((now - r.start) / RIDES[r.ride].duration, 0, seatEndU(r.ride, r.seat));
+      const s = seatPose(r.ride, r.dir, u, r.seat);
+      p.x = s.x;
+      p.z = s.z;
+      p.ry = s.ry;
+      p.budget = MOVE_BURST;
+      dirty.add(socket.id);
+      return;
+    }
     const c = clampToZones(num(m?.x, p.x), num(m?.z, p.z));
+    const d = Math.hypot(c.x - p.x, c.z - p.z);
+    if (ALLOW_TELEPORT || d <= p.budget + MOVE_SLACK) p.budget = Math.max(0, p.budget - d);
+    else if (throughPortal(p, c)) p.budget = MOVE_BURST;
+    else {
+      // Too far, too fast: keep the old position and put the player back there.
+      if (now - p.lastCorrect > CORRECT_MS) {
+        p.lastCorrect = now;
+        socket.emit("correct", { x: p.x, z: p.z });
+      }
+      return;
+    }
     p.x = c.x;
     p.z = c.z;
     p.ry = num(m?.ry, p.ry);
@@ -192,6 +241,16 @@ io.on("connection", (socket) => {
   const endRide = (p) => {
     if (!p.ride) return;
     clearTimeout(p.rideTimer);
+    // Step off where the client does: the arrival landing, side by side by seat.
+    const r = p.ride;
+    const pt = PORTALS.find((q) => q.kind === "ride" && q.ride === r.ride && q.dir === r.dir);
+    if (pt) {
+      p.x = pt.to.x + (r.seat % 2 ? 0.9 : -0.9);
+      p.z = pt.to.z + Math.floor(r.seat / 2) * 1.1;
+      dirty.add(p.id);
+    }
+    p.budget = MOVE_BURST;
+    p.lastMoveAt = Date.now();
     const v = vehicles.get(p.ride.vehicle);
     if (v) {
       v.seats[p.ride.seat] = null;

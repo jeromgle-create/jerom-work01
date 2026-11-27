@@ -140,7 +140,15 @@ export default function App() {
       else rides.set(r.id, r as RideState);
     };
     socket.on("ride", onRide);
+    // The server refused a move that was too fast (not walking, not a door): go back to where it has us.
+    const onCorrect = (c: { x: number; z: number }) => {
+      debugTeleport.pending = { x: c.x, z: c.z };
+      debugTeleport.corrections++;
+      moveOrder.active = false;
+    };
+    socket.on("correct", onCorrect);
     return () => {
+      socket.off("correct", onCorrect);
       socket.off("ride", onRide);
       socket.off("group:state", onGroup);
       socket.off("voice:state", onVoiceState);
@@ -225,6 +233,8 @@ export default function App() {
       zoom: () => view.zoom,
       order: () => ({ ...moveOrder }),
       pan: () => ({ ...view.pan, dragging: view.dragging }),
+      remote: (id: string) => remoteTargets.get(id) ?? null, // where another player is shown
+      corrections: () => debugTeleport.corrections, // server snap-backs (should stay 0 for honest walking)
     };
   }, [voice]);
 
