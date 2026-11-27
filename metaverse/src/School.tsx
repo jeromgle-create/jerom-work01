@@ -427,7 +427,7 @@ function Trees() {
 
 /** Lumpy leaf-cluster geometry, shared by every tree. */
 const BLOB = (() => {
-  const g = new THREE.IcosahedronGeometry(1, 3);
+  const g = new THREE.IcosahedronGeometry(1, 2);
   const p = g.attributes.position as THREE.BufferAttribute;
   const v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {

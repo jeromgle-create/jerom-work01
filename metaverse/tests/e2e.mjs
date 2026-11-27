@@ -96,8 +96,9 @@ if (on("rides")) {
     await p.keyboard.up("w");
     return (await rides(p))[await selfId(p)];
   };
-  const ra = await board(a, P + 12, 56.4);
-  const rb = await board(b, P + 12.5, 56.4);
+  // Both walk onto the stop at the same time (boarding one after the other can miss the 8 s wait
+  // when software rendering is slow).
+  const [ra, rb] = await Promise.all([board(a, P + 12, 56.4), board(b, P + 12.5, 56.4)]);
   check(ra.vehicle === rb.vehicle && ra.start === rb.start && ra.seat !== rb.seat, "same train, same departure, different seats", `${ra.vehicle} seats ${ra.seat}/${rb.seat}`);
   check((await place(a)).includes("출발까지"), "HUD shows the departure countdown", await place(a));
   await a.waitForFunction((s) => Date.now() > s + 4000, ra.start, { timeout: 30000 });

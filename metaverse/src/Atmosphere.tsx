@@ -11,20 +11,33 @@ import { selfPos } from "./net";
 
 export const SUN_DIR = new THREE.Vector3(0.45, 0.75, 0.48).normalize(); // from the south-east, high
 
-export function Atmosphere({ outdoor, dark, park }: { outdoor: boolean; dark: boolean; park: boolean }) {
+/** Owns scene.background: the baked sky outdoors by day, else the plain colour `bg`. */
+export function Atmosphere({ outdoor, dark, park, bg }: { outdoor: boolean; dark: boolean; park: boolean; bg: string }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
-  const sky = useMemo(() => {
+  // The sun never moves, so the (expensive, per-pixel) Sky shader is rendered once into a cube map
+  // that then serves as the background.
+  const skyBg = useMemo(() => {
     const s = new Sky();
-    s.scale.setScalar(2200);
+    s.scale.setScalar(100);
     const u = s.material.uniforms;
     u.turbidity.value = 5;
     u.rayleigh.value = 1.2;
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.8;
     u.sunPosition.value.copy(SUN_DIR);
-    return s;
-  }, []);
+    const sc = new THREE.Scene();
+    sc.add(s);
+    const rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+    const cam = new THREE.CubeCamera(1, 1000, rt);
+    const tm = gl.toneMapping;
+    cam.update(gl, sc);
+    gl.toneMapping = tm;
+    s.geometry.dispose();
+    s.material.dispose();
+    return rt;
+  }, [gl]);
+  useEffect(() => () => skyBg.dispose(), [skyBg]);
   const envs = useMemo(() => {
     const pm = new THREE.PMREMGenerator(gl);
     // Outdoor light probe: a soft sky-to-ground gradient (the Sky shader itself is HDR and far too
@@ -56,15 +69,14 @@ export function Atmosphere({ outdoor, dark, park }: { outdoor: boolean; dark: bo
     envs.outdoor.dispose();
     envs.room.dispose();
   }, [envs]);
-  // The sky box is centred on the camera (zones are kilometres apart).
-  useFrame(({ camera }) => sky.position.copy(camera.position));
   const daySky = outdoor && !dark;
   useEffect(() => {
     scene.environment = daySky ? envs.outdoor : envs.room;
+    scene.background = daySky ? skyBg.texture : new THREE.Color(bg);
     // The park keeps its plain colours (its realistic pass comes later): less sky light there.
     scene.environmentIntensity = daySky ? (park ? 0.3 : 0.75) : dark ? 0.12 : 0.3;
-  }, [scene, envs, daySky, dark, park]);
-  return daySky ? <primitive object={sky} /> : null;
+  }, [scene, envs, skyBg, daySky, dark, park, bg]);
+  return null;
 }
 
 /** Directional sunlight; the shadow box is centred on the player so shadows exist wherever they go. */
