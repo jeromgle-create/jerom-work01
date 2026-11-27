@@ -7,7 +7,7 @@ import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
-import { RIDES, seatEndU, seatPose } from "../shared/layout.js";
+import { RIDES, ZONE_RECTS, seatEndU, seatPose } from "../shared/layout.js";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 
 const PORTAL_COOLDOWN_MS = 800;
@@ -122,6 +122,8 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     if (k.has("w") || k.has("arrowup")) mz -= 1;
     if (k.has("s") || k.has("arrowdown")) mz += 1;
     // Click / tap to move: plan a path when a new order arrives; keys or joystick cancel it.
+    // Moving yourself (keys / joystick) brings a dragged camera back onto you.
+    if (len0(mx, mz) > 0.05) view.recenter = true;
     if (len0(mx, mz) > 0.05 || riding.current) {
       if (path.current) {
         path.current = null;
@@ -222,6 +224,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
         path.current = null; // went through a door / stairs: the old path is for another place
         moveOrder.active = false;
       }
+      if (z !== zone.current) view.pan = { x: 0, z: 0 }; // new place: look at yourself again
       zone.current = z;
       camera.position.copy(pos.current).addScaledVector(cam.offset, view.zoom); // cut, don't fly across the map
     }
@@ -234,9 +237,26 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       g.position.copy(pos.current);
       g.rotation.y = ry.current;
     }
+    // Drag-to-pan: keep the looked-at point inside the current zone; ease back when recentering.
+    const pan = view.pan;
+    if (view.recenter && !view.dragging) {
+      const k = Math.min(1, dt * 5);
+      pan.x -= pan.x * k;
+      pan.z -= pan.z * k;
+      if (Math.hypot(pan.x, pan.z) < 0.05) {
+        pan.x = pan.z = 0;
+        view.recenter = false;
+      }
+    }
+    const zr = ZONE_RECTS.find((r) => r.id === z) ?? ZONE_RECTS[0];
+    pan.x = THREE.MathUtils.clamp(pan.x, zr.minX - pos.current.x, zr.maxX - pos.current.x);
+    pan.z = THREE.MathUtils.clamp(pan.z, zr.minZ - pos.current.z, zr.maxZ - pos.current.z);
     const camTarget = pos.current.clone().addScaledVector(cam.offset, view.zoom); // pinch / wheel zoom
-    camera.position.lerp(camTarget, Math.min(1, dt * 5));
-    camera.lookAt(pos.current.x, pos.current.y + cam.lookY, pos.current.z - cam.ahead);
+    camTarget.x += pan.x;
+    camTarget.z += pan.z;
+    if (view.dragging) camera.position.copy(camTarget); // follow the finger exactly while dragging
+    else camera.position.lerp(camTarget, Math.min(1, dt * 5));
+    camera.lookAt(pos.current.x + pan.x, pos.current.y + cam.lookY, pos.current.z + pan.z - cam.ahead);
     if (g) placeLabel(start.id, g, camera, size.width, size.height);
 
     const now = performance.now();
@@ -269,8 +289,8 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const raycaster = new THREE.Raycaster();
 
 /**
- * Click (mouse) or short tap (touch) on the scene: walk there. Drags, long presses and multi-finger
- * gestures (pinch zoom) are ignored.
+ * Click (mouse) or short tap (touch) on the scene: walk there. Dragging with one finger / the mouse
+ * pans the camera over the ground instead; multi-finger gestures (pinch zoom) do neither.
  */
 function ClickToMove() {
   const el = useThree((s) => s.gl.domElement);
@@ -304,14 +324,46 @@ function ClickToMove() {
     const onCancel = (e: PointerEvent) => {
       down.delete(e.pointerId);
       if (down.size === 0) multi = false;
+      if (down.size === 0) view.dragging = false;
+    };
+    // Drag to pan: move the camera so the ground point under the finger stays under the finger.
+    const groundAt = (cx: number, cy: number, out: THREE.Vector3) => {
+      const r = el.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      return raycaster.ray.intersectPlane(groundPlane, out);
+    };
+    const last = new Map<number, { x: number; y: number }>();
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const onMove = (e: PointerEvent) => {
+      const d = down.get(e.pointerId);
+      if (!d || multi || down.size !== 1) return;
+      if (!view.dragging && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 10) return;
+      const prev = last.get(e.pointerId) ?? { x: d.x, y: d.y };
+      last.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      view.dragging = true;
+      view.recenter = false;
+      if (groundAt(prev.x, prev.y, a) && groundAt(e.clientX, e.clientY, b)) {
+        view.pan.x += a.x - b.x;
+        view.pan.z += a.z - b.z;
+      }
+    };
+    const onUpPan = (e: PointerEvent) => {
+      last.delete(e.pointerId);
+      if (down.size === 0) view.dragging = false;
     };
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointerup", onUpPan);
     el.addEventListener("pointercancel", onCancel);
+    el.addEventListener("pointermove", onMove);
     return () => {
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointerup", onUpPan);
       el.removeEventListener("pointercancel", onCancel);
+      el.removeEventListener("pointermove", onMove);
     };
   }, [el, camera]);
   return null;

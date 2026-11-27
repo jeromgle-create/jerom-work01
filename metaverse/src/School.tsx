@@ -371,7 +371,7 @@ export default function School({ dark }: { dark: boolean }) {
   return (
     <>
       <mesh rotation-x={-Math.PI / 2} receiveShadow>
-        <planeGeometry args={[OUTDOOR.maxX - OUTDOOR.minX + 8, OUTDOOR.maxZ - OUTDOOR.minZ + 8]} />
+        <planeGeometry args={[OUTDOOR.maxX - OUTDOOR.minX + 120, OUTDOOR.maxZ - OUTDOOR.minZ + 120]} />
         <meshStandardMaterial color={dark ? "#33452f" : "#9cc77e"} />
       </mesh>
       <mesh rotation-x={-Math.PI / 2} position={[14, 0.005, 29.5]} receiveShadow>
