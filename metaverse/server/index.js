@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { PARK, PARK_RIDES, RIDES, SPAWN, ZONE_RECTS, locationKey } from "../shared/layout.js";
+import { CAR_GAP, PARK, PARK_RIDES, RIDES, SPAWN, ZONE_RECTS, locationKey, seatCar } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -97,7 +97,7 @@ io.on("connection", (socket) => {
       voice: false,
       muted: false,
       group: null,
-      ride: null, // { ride, dir, start } while sitting in the elephant train or a lift chair
+      ride: null, // { ride, dir, start, vehicle, seat } while sitting in the elephant train or a lift chair
       rideTimer: null,
     };
     players.set(socket.id, player);
@@ -188,10 +188,15 @@ io.on("connection", (socket) => {
     io.to(target.id).emit("rtc:signal", { from: p.id, data: m.data });
   });
 
-  // --- Rides: the server stamps the start time; every client derives the rider's pose from it. ---
+  // --- Rides: the server picks a vehicle + seat and its departure time; clients derive poses from it. ---
   const endRide = (p) => {
     if (!p.ride) return;
     clearTimeout(p.rideTimer);
+    const v = vehicles.get(p.ride.vehicle);
+    if (v) {
+      v.seats[p.ride.seat] = null;
+      if (v.seats.every((x) => x === null) && Date.now() > v.start) vehicles.delete(p.ride.vehicle);
+    }
     p.ride = null;
     p.rideTimer = null;
     io.emit("ride", { id: p.id, ride: null });
@@ -207,10 +212,33 @@ io.on("connection", (socket) => {
     const cx = PARK.cx + (x0 + x1) / 2;
     const cz = (z0 + z1) / 2;
     if (Math.hypot(p.x - cx, p.z - cz) > 6) return ack?.({ ok: false });
-    p.ride = { ride, dir, start: Date.now() };
-    p.rideTimer = setTimeout(() => endRide(p), RIDES[ride].duration + 1500); // safety net if the client never reports arrival
+    // Join a vehicle still waiting at this station with a free seat, or open a new one.
+    const now = Date.now();
+    const spec = RIDES[ride];
+    let vid = null;
+    let seat = -1;
+    for (const [id, v] of vehicles) {
+      if (v.ride !== ride || v.dir !== dir || v.start - now < 300) continue;
+      const free = v.seats.indexOf(null);
+      if (free >= 0) {
+        vid = id;
+        seat = free;
+        break;
+      }
+    }
+    if (vid === null) {
+      vid = `v${++vehicleSeq}`;
+      vehicles.set(vid, { ride, dir, start: now + spec.boardWait, seats: new Array(spec.capacity).fill(null) });
+      seat = 0;
+    }
+    const v = vehicles.get(vid);
+    v.seats[seat] = p.id;
+    p.ride = { ride, dir, start: v.start, vehicle: vid, seat };
+    // safety net if the client never reports arrival
+    const endAt = v.start + spec.duration * (1 + seatCar(ride, seat) * CAR_GAP) + 1500;
+    p.rideTimer = setTimeout(() => endRide(p), endAt - now);
     io.emit("ride", { id: p.id, ...p.ride });
-    ack?.({ ok: true, start: p.ride.start });
+    ack?.({ ok: true, ...p.ride });
   });
   socket.on("ride:end", () => {
     const p = players.get(socket.id);
@@ -241,6 +269,9 @@ setInterval(() => {
 
 // --- Meeting groups: connected components of players standing close together. ---
 let groupSeq = 0;
+/** Shared ride vehicles: id -> { ride, dir, start (departure, server ms), seats: (playerId|null)[] } */
+const vehicles = new Map();
+let vehicleSeq = 0;
 /** @type {Map<string, number>} "idA|idB" -> since when the pair has been within GROUP_JOIN_R */
 let nearSince = new Map();
 /** @type {Map<string, string>} group id -> signature of its member list last sent to clients */
@@ -331,6 +362,11 @@ function updateGroups() {
   for (const gid of [...groupSig.keys()]) if (!live.has(gid)) groupSig.delete(gid);
 }
 setInterval(updateGroups, GROUP_TICK_MS);
+// Drop finished vehicles (e.g. everyone disconnected mid-ride).
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, v] of vehicles) if (now > v.start + RIDES[v.ride].duration * 1.3 + 5000) vehicles.delete(id);
+}, 10000);
 
 httpServer.listen(PORT, () => {
   console.log(`metaverse server listening on :${PORT}`);

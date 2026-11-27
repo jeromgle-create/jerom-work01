@@ -189,8 +189,16 @@ export default function App() {
       const here = locationAt(selfPos.x, selfPos.z);
       const mine = rides.get(socket.id ?? "");
       if (mine) {
-        const left = Math.max(0, Math.ceil((mine.start + RIDES[mine.ride].duration - serverNow()) / 1000));
-        setPlace(`${RIDES[mine.ride].name} 타는 중 · ${left}초 남음`);
+        const now = serverNow();
+        const name = RIDES[mine.ride].name;
+        const aboard = [...rides.values()].filter((r) => r.vehicle === mine.vehicle).length;
+        if (now < mine.start) {
+          const wait = Math.ceil((mine.start - now) / 1000);
+          setPlace(`${name} 출발까지 ${wait}초 · ${aboard}명 탑승 (친구는 같은 매트를 밟으면 함께 타요)`);
+        } else {
+          const left = Math.max(0, Math.ceil((mine.start + RIDES[mine.ride].duration - now) / 1000));
+          setPlace(`${name} 타는 중${aboard > 1 ? ` · ${aboard}명 함께` : ""} · ${left}초 남음`);
+        }
       } else setPlace(here.label);
       // Hint for the "근처" tab: others within 3m in the same room (the server decides delivery).
       let n = 0;
