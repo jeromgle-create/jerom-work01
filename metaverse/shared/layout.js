@@ -132,6 +132,58 @@ export const PARK_RIDES = [
 ];
 export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 
+// ---------- rideable vehicles ----------
+// Every client computes a rider's pose from the same path and the server's start time, so riders
+// are seen in their train car / lift chair (including height) without syncing y.
+const LAKE_LOOP = { x: 8, z: 4, rx: 27, rz: 24 };
+export const LIFT_LINE = { a: [-14, 37.5], b: [64, -46], y: 9 };
+/** @param {[number, number][]} pts local polyline -> sampler over arc length */
+function polyline(pts) {
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = acc[acc.length - 1];
+  return (u) => {
+    const d = Math.min(Math.max(u, 0), 1) * total;
+    let i = 1;
+    while (i < acc.length - 1 && acc[i] < d) i++;
+    const t = (d - acc[i - 1]) / (acc[i] - acc[i - 1] || 1);
+    const [x0, z0] = pts[i - 1];
+    const [x1, z1] = pts[i];
+    return { x: x0 + (x1 - x0) * t, z: z0 + (z1 - z0) * t, ry: Math.atan2(x1 - x0, z1 - z0) };
+  };
+}
+const TRAIN_PATH = (() => {
+  const pts = [[12, 55], [12, 44], [12, 34]];
+  // around the east side of the lake loop, from the south (a≈1.42) to the north-east (a≈-0.35)
+  for (let a = 1.42; a >= -0.35; a -= 0.08) pts.push([LAKE_LOOP.x + Math.cos(a) * LAKE_LOOP.rx, LAKE_LOOP.z + Math.sin(a) * LAKE_LOOP.rz]);
+  pts.push([38, -6], [40, -9.5]);
+  return polyline(pts);
+})();
+const LIFT_PATH = polyline([LIFT_LINE.a, LIFT_LINE.b]);
+const SEAT_Y = LIFT_LINE.y - 1.4 - 0.35; // avatar feet height when sitting in a chair
+/** Ride specs: index matches PARK_RIDES. Durations in ms. */
+export const RIDES = [
+  { name: "코끼리열차", duration: 18000, vehicle: "train", sample: TRAIN_PATH, height: () => 0.3 },
+  {
+    name: "스카이리프트",
+    duration: 20000,
+    vehicle: "chair",
+    sample: LIFT_PATH,
+    // rise out of the station, cruise under the cable, set down at the other station
+    height: (u) => SEAT_Y * Math.min(1, u / 0.08, (1 - u) / 0.08),
+  },
+];
+/**
+ * World pose of a rider. dir "ab" goes from station a to b, "ba" the other way.
+ * @param {number} ride @param {"ab"|"ba"} dir @param {number} u progress 0..1
+ */
+export function ridePose(ride, dir, u) {
+  const r = RIDES[ride];
+  const k = dir === "ab" ? u : 1 - u;
+  const p = r.sample(k);
+  return { x: PARK.cx + p.x, z: PARK.cz + p.z, y: r.height(k), ry: dir === "ab" ? p.ry : p.ry + Math.PI };
+}
+
 /** Where new players appear: around the middle of the field. */
 export const SPAWN = { x: -17, z: 17 };
 
@@ -171,7 +223,7 @@ export function locationKey(x, z) {
 // ---------- portals (world coordinates) ----------
 const STAIR_PAD_D = 1.6; // pads sit at the corridor end of the stairs cell
 /**
- * @typedef {{ from: string, minX: number, maxX: number, minZ: number, maxZ: number, to: { x: number, z: number, ry: number }, label: string, kind: "up"|"down"|"exit"|"enter"|"ride" }} Portal
+ * @typedef {{ from: string, minX: number, maxX: number, minZ: number, maxZ: number, to: { x: number, z: number, ry: number }, label: string, kind: "up"|"down"|"exit"|"enter"|"ride", ride?: number, dir?: "ab"|"ba" }} Portal
  * @type {Portal[]}
  */
 export const PORTALS = (() => {
@@ -205,9 +257,9 @@ export const PORTALS = (() => {
   out.push({ from: "park", minX: P(ex0), maxX: P(ex1), minZ: ez0, maxZ: ez1, to: { x: -5, z: 31.4, ry: Math.PI }, label: "한빛초등학교로", kind: "exit" });
   // rides inside the park (both directions)
   for (const r of PARK_RIDES)
-    for (const [from, to] of [[r.a, r.b], [r.b, r.a]]) {
+    for (const [from, to, dir] of [[r.a, r.b, "ab"], [r.b, r.a, "ba"]]) {
       const [x0, x1, z0, z1] = from.mat;
-      out.push({ from: "park", minX: P(x0), maxX: P(x1), minZ: z0, maxZ: z1, to: { x: P(to.land[0]), z: to.land[1], ry: Math.PI }, label: r.name, kind: "ride" });
+      out.push({ from: "park", minX: P(x0), maxX: P(x1), minZ: z0, maxZ: z1, to: { x: P(to.land[0]), z: to.land[1], ry: Math.PI }, label: r.name, kind: "ride", ride: PARK_RIDES.indexOf(r), dir });
     }
   return out;
 })();

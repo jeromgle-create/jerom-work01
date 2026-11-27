@@ -16,7 +16,15 @@ export const input = {
 export const labelEls = new Map<string, HTMLDivElement>();
 
 /** Local player's current position (read by proximity voice). */
-export const selfPos = { x: 0, z: 0 };
+export const selfPos = { x: 0, z: 0, y: 0 };
 
 /** Test hook: a pending teleport consumed by the local player (positions are still clamped by the server). */
 export const debugTeleport: { pending: { x: number; z: number } | null } = { pending: null };
+
+// ---------- rides ----------
+export type RideState = { ride: number; dir: "ab" | "ba"; start: number }; // start: server time (ms)
+/** Active rides by player id (including this player), from the server. */
+export const rides = new Map<string, RideState>();
+/** Offset to convert local Date.now() into server time; set when joining. */
+export const clock = { offset: 0 };
+export const serverNow = () => Date.now() + clock.offset;
