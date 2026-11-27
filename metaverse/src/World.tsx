@@ -6,7 +6,7 @@ import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
-import { RIDES, ridePose } from "../shared/layout.js";
+import { RIDES, seatEndU, seatPose } from "../shared/layout.js";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 
 const PORTAL_COOLDOWN_MS = 800;
@@ -33,10 +33,10 @@ type Props = { selfId: string; selfStart: Player; players: Player[] };
 const SPEED = 6;
 const SEND_MS = 66;
 const tmp = new THREE.Vector3();
-/** Progress (0..1) of a ride, or null when it is over. */
+/** Progress of a ride (0 while waiting at the station), or null once this rider's car has arrived. */
 function rideProgress(r: RideState) {
   const u = (serverNow() - r.start) / RIDES[r.ride].duration;
-  return u >= 1 ? null : Math.max(0, u);
+  return u >= seatEndU(r.ride, r.seat) ? null : Math.max(0, u);
 }
 
 /** Place a player's DOM label above their head in screen space. */
@@ -96,7 +96,11 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
   const zone = useRef<ZoneId>(zoneAt(start.x));
   const cooldownUntil = useRef(0);
   /** Current ride (train car / lift chair) and where to step off. */
-  const riding = useRef<(RideState & { land: { x: number; z: number; ry: number } }) | null>(null);
+  const riding = useRef<
+    | (RideState & { land: { x: number; z: number; ry: number } })
+    | { pending: true; land: { x: number; z: number; ry: number } }
+    | null
+  >(null);
 
   useEffect(() => {
     pos.current.set(start.x, 0, start.z);
@@ -115,8 +119,10 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     if (k.has("w") || k.has("arrowup")) mz -= 1;
     if (k.has("s") || k.has("arrowdown")) mz += 1;
     const len = Math.hypot(mx, mz);
-    if (riding.current) {
-      // Seated: the vehicle carries the player; movement keys do nothing until arrival.
+    if (riding.current && "pending" in riding.current) {
+      // Waiting for the server to assign a vehicle and seat (one round trip).
+    } else if (riding.current) {
+      // Seated: the vehicle waits for friends, then carries everyone; movement keys do nothing until arrival.
       const r = riding.current;
       const u = rideProgress(r);
       if (u === null) {
@@ -127,7 +133,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
         socket.emit("ride:end");
         cooldownUntil.current = performance.now() + PORTAL_COOLDOWN_MS;
       } else {
-        const p = ridePose(r.ride, r.dir, u);
+        const p = seatPose(r.ride, r.dir, u, r.seat);
         pos.current.set(p.x, p.y, p.z);
         ry.current = p.ry;
       }
@@ -143,19 +149,18 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       const now = performance.now();
       const portal = now > cooldownUntil.current ? portalAt(pos.current.x, pos.current.z) : undefined;
       if (portal?.kind === "ride" && portal.ride !== undefined && portal.dir) {
-        // Board: start right away with the local estimate of server time, then adopt the server's stamp.
-        const r = { ride: portal.ride, dir: portal.dir, start: serverNow() };
-        riding.current = { ...r, land: portal.to };
-        rides.set(start.id, r);
-        socket.emit("ride:start", { ride: r.ride, dir: r.dir }, (ack: { ok: boolean; start?: number }) => {
+        // Board: the server puts us in a vehicle waiting at this station (with friends) or opens a new one.
+        const land = portal.to;
+        riding.current = { pending: true, land };
+        socket.emit("ride:start", { ride: portal.ride, dir: portal.dir }, (ack: ({ ok: true } & RideState) | { ok: false }) => {
           if (!riding.current) return;
-          if (ack?.ok && ack.start) {
-            riding.current.start = ack.start;
-            rides.set(start.id, { ride: r.ride, dir: r.dir, start: ack.start });
-          } else {
-            riding.current = null; // refused (e.g. already riding): stay at the station
-            rides.delete(start.id);
-          }
+          if (ack?.ok) {
+            const r: RideState = { ride: ack.ride, dir: ack.dir, start: ack.start, vehicle: ack.vehicle, seat: ack.seat };
+            // step off side by side instead of on top of each other
+            const off = { x: (ack.seat % 2 ? 0.9 : -0.9), z: Math.floor(ack.seat / 2) * 1.1 };
+            riding.current = { ...r, land: { ...land, x: land.x + off.x, z: land.z + off.z } };
+            rides.set(start.id, r);
+          } else riding.current = null; // refused (e.g. already riding): stay at the station
         });
         cooldownUntil.current = now + RIDES[portal.ride].duration;
       } else if (portal) {
@@ -227,8 +232,8 @@ function RemotePlayer({ player }: { player: Player }) {
     const r = rides.get(player.id);
     const u = r ? rideProgress(r) : null;
     if (r && u !== null) {
-      // Riding: pose comes from the shared path and the server's start time (height included).
-      const p = ridePose(r.ride, r.dir, u);
+      // Riding: pose comes from the shared path, the seat and the server's departure time (height included).
+      const p = seatPose(r.ride, r.dir, u, r.seat);
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.ry;
       placeLabel(player.id, g, camera, size.width, size.height);

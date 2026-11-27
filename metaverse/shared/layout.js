@@ -143,7 +143,7 @@ function polyline(pts) {
   for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   const total = acc[acc.length - 1];
   return (u) => {
-    const d = Math.min(Math.max(u, 0), 1) * total;
+    const d = u * total; // u outside [0,1] extrapolates along the first / last segment
     let i = 1;
     while (i < acc.length - 1 && acc[i] < d) i++;
     const t = (d - acc[i - 1]) / (acc[i] - acc[i - 1] || 1);
@@ -153,7 +153,7 @@ function polyline(pts) {
   };
 }
 const TRAIN_PATH = (() => {
-  const pts = [[12, 55], [12, 44], [12, 34]];
+  const pts = [[12, 51.5], [12, 44], [12, 34]];
   // around the east side of the lake loop, from the south (a≈1.42) to the north-east (a≈-0.35)
   for (let a = 1.42; a >= -0.35; a -= 0.08) pts.push([LAKE_LOOP.x + Math.cos(a) * LAKE_LOOP.rx, LAKE_LOOP.z + Math.sin(a) * LAKE_LOOP.rz]);
   pts.push([38, -6], [40, -9.5]);
@@ -162,17 +162,25 @@ const TRAIN_PATH = (() => {
 const LIFT_PATH = polyline([LIFT_LINE.a, LIFT_LINE.b]);
 const SEAT_Y = LIFT_LINE.y - 1.4 - 0.35; // avatar feet height when sitting in a chair
 /** Ride specs: index matches PARK_RIDES. Durations in ms. */
+// Shared vehicles: the first rider opens a vehicle that waits `boardWait` ms at the station; friends who
+// step on the same mat meanwhile take the next seats. Seats fill car by car, two per car.
 export const RIDES = [
-  { name: "코끼리열차", duration: 18000, vehicle: "train", sample: TRAIN_PATH, height: () => 0.3 },
+  { name: "코끼리열차", duration: 18000, vehicle: "train", sample: TRAIN_PATH, height: () => 0.3, capacity: 6, seatsPerCar: 2, boardWait: 8000 },
   {
     name: "스카이리프트",
     duration: 20000,
     vehicle: "chair",
     sample: LIFT_PATH,
     // rise out of the station, cruise under the cable, set down at the other station
-    height: (u) => SEAT_Y * Math.min(1, u / 0.08, (1 - u) / 0.08),
+    height: (u) => SEAT_Y * Math.max(0, Math.min(1, u / 0.08, (1 - u) / 0.08)),
+    capacity: 2,
+    seatsPerCar: 2,
+    boardWait: 4000,
   },
 ];
+/** Train cars trail the head car by this fraction of the route. */
+export const CAR_GAP = 0.04;
+const SEAT_SIDE = 0.38;
 /**
  * World pose of a rider. dir "ab" goes from station a to b, "ba" the other way.
  * @param {number} ride @param {"ab"|"ba"} dir @param {number} u progress 0..1
@@ -182,6 +190,16 @@ export function ridePose(ride, dir, u) {
   const k = dir === "ab" ? u : 1 - u;
   const p = r.sample(k);
   return { x: PARK.cx + p.x, z: PARK.cz + p.z, y: r.height(k), ry: dir === "ab" ? p.ry : p.ry + Math.PI };
+}
+/** Car index of a seat (0 = head car). */
+export const seatCar = (ride, seat) => Math.floor(seat / RIDES[ride].seatsPerCar);
+/** A rider is done when their own car reaches the end of the route. */
+export const seatEndU = (ride, seat) => 1 + seatCar(ride, seat) * CAR_GAP;
+/** World pose of a rider in a given seat: their car's pose, shifted left/right within the car. */
+export function seatPose(ride, dir, u, seat) {
+  const p = ridePose(ride, dir, u - seatCar(ride, seat) * CAR_GAP);
+  const side = (seat % RIDES[ride].seatsPerCar === 0 ? -1 : 1) * SEAT_SIDE;
+  return { ...p, x: p.x + Math.cos(p.ry) * side, z: p.z - Math.sin(p.ry) * side };
 }
 
 /** Where new players appear: around the middle of the field. */

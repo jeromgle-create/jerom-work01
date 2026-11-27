@@ -7,7 +7,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Box, BoxInstances, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
 import { PARK, PARK_EXIT_MAT, PARK_RIDES } from "./zones";
-import { LIFT_LINE, RIDES, ridePose } from "../shared/layout.js";
+import { CAR_GAP, LIFT_LINE, RIDES, ridePose } from "../shared/layout.js";
+import type { RideState } from "./net";
 import { rides, serverNow } from "./net";
 
 type Item = { p: V3; s: V3; c: string };
@@ -302,7 +303,6 @@ function SwanBoats() {
 
 // ---------- vehicles that carry riders ----------
 const POOL = 6;
-const CAR_GAP = 0.04; // trailing train cars, as a fraction of the route
 const TRAIN_COLORS = ["#8d99ae", "#e76f51", "#2a9d8f"];
 
 function TrainCar({ head, color }: { head: boolean; color: string }) {
@@ -335,15 +335,19 @@ export function RideVehicles() {
     let ti = 0;
     let ci = 0;
     const now = serverNow();
-    for (const r of rides.values()) {
+    // one vehicle per vehicle id, however many friends sit in it
+    const byVehicle = new Map<string, RideState>();
+    for (const r of rides.values()) if (!byVehicle.has(r.vehicle)) byVehicle.set(r.vehicle, r);
+    for (const r of byVehicle.values()) {
       const spec = RIDES[r.ride];
-      const u = (now - r.start) / spec.duration;
-      if (u < 0 || u >= 1) continue;
+      const raw = (now - r.start) / spec.duration;
+      const u = Math.max(0, raw); // waits at the station until departure
+      if (raw >= 1 + 3 * CAR_GAP) continue;
       if (spec.vehicle === "train" && ti < POOL) {
         trains.current[ti].forEach((g, k) => {
           if (!g) return;
-          const p = ridePose(r.ride, r.dir, Math.max(0, u - k * CAR_GAP));
-          g.visible = u - k * CAR_GAP >= -0.001 || k === 0;
+          const p = ridePose(r.ride, r.dir, u - k * CAR_GAP);
+          g.visible = u - k * CAR_GAP < 1;
           g.position.set(p.x - PARK.cx, 0, p.z - PARK.cz);
           g.rotation.y = p.ry;
         });
@@ -530,10 +534,10 @@ function Signs() {
       <Sign p={[0, 4.6, 46.52]} size={[9, 0.7]} text={PARK.name} bg="#2a9d8f" fg="#ffffff" />
       {s([-11, 1.6, 53.25], "매표소", "#ffffff", "#2a9d8f", 2)}
       {s([0, 1.6, 59.4], "▼ 한빛초등학교로 돌아가기", "#3bb273", "#ffffff", 4.6)}
-      {s([12, 2.4, 53.2], "코끼리열차 타기 → 동물원", "#e09f3e", "#ffffff", 4.2)}
-      {s([40, 2.4, -12.3], "코끼리열차 타기 → 정문", "#e09f3e", "#ffffff", 4)}
-      {s([-14, 4, 37.4], "스카이리프트 타기 → 동물원 정상", "#457b9d", "#ffffff", 4.6)}
-      {s([64, 4, -43.2], "스카이리프트 타기 → 호숫가", "#457b9d", "#ffffff", 4)}
+      {s([12, 2.4, 53.2], "코끼리열차 타기 → 동물원 (8초 안에 친구도 함께)", "#e09f3e", "#ffffff", 6.4)}
+      {s([40, 2.4, -12.3], "코끼리열차 타기 → 정문 (8초 안에 친구도 함께)", "#e09f3e", "#ffffff", 6.2)}
+      {s([-14, 4, 37.4], "스카이리프트 타기 → 동물원 정상 (2인승)", "#457b9d", "#ffffff", 5.6)}
+      {s([64, 4, -43.2], "스카이리프트 타기 → 호숫가 (2인승)", "#457b9d", "#ffffff", 5)}
       {s([LAKE.x, 1.2, LAKE.z + LAKE.r + 1.2], "대공원 호수 · 둘레길", "#e0fbfc", "#1d3557", 4)}
       {s([45, 2.2, -13.6], "동물원", "#ffb703", "#3d2c00", 3)}
       {PENS.map((p) => s([(p.rect[0] + p.rect[1]) / 2, 1.8, p.rect[3] + 0.25], p.name, "#fff3b0", "#7a4b00", Math.max(1.6, p.name.length * 0.55)))}

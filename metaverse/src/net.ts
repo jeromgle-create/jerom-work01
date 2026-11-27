@@ -22,7 +22,7 @@ export const selfPos = { x: 0, z: 0, y: 0 };
 export const debugTeleport: { pending: { x: number; z: number } | null } = { pending: null };
 
 // ---------- rides ----------
-export type RideState = { ride: number; dir: "ab" | "ba"; start: number }; // start: server time (ms)
+export type RideState = { ride: number; dir: "ab" | "ba"; start: number; vehicle: string; seat: number }; // start: departure, server time (ms)
 /** Active rides by player id (including this player), from the server. */
 export const rides = new Map<string, RideState>();
 /** Offset to convert local Date.now() into server time; set when joining. */
