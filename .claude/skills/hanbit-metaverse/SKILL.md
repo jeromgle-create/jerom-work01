@@ -26,8 +26,8 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
 | `src/parts.tsx` | Box/BoxInstances/Sign meshes, 2D colliders + `pushOut`. |
 | `src/pathfind.ts` | A* over a walkability grid built from `collide()`; avoids portal mats unless targeted. |
-| `src/Minimap.tsx`, `Chat.tsx`, `chatState.ts`, `voice.ts`, `App.tsx` | Minimap/full map, three-tab chat, WebRTC proximity voice, HUD + `window.__mvDebug` test hooks. |
-| `tests/` | `sim.mjs` (headless reachability/collision/path), `bots.mjs` (server rules), `e2e.mjs` (Playwright), `run-all.sh`. |
+| `src/Minimap.tsx`, `Chat.tsx`, `chatState.ts`, `voice.ts`, `App.tsx` | Minimap/full map, three-tab chat, WebRTC proximity voice, HUD + `window.__mvDebug` test hooks (read-only on the live site; `teleport` only when built with `VITE_MV_DEBUG=1`). |
+| `tests/` | `sim.mjs` (headless reachability/collision/path), `bots.mjs` (server rules), `e2e.mjs` (Playwright, needs the teleport test build), `live.mjs` (production smoke, no teleport), `run-all.sh`. |
 
 Key ideas to keep intact (they make features cheap and must not be broken):
 
@@ -71,7 +71,7 @@ cd metaverse
 npm run build                         # tsc + vite
 bash tests/run-all.sh                 # sim + bots + all e2e sections (≈10 min)
 bash tests/run-all.sh stairs rides    # sim + bots + chosen e2e sections
-MV_URL=https://jerom-world.onrender.com node tests/e2e.mjs rides   # against production
+MV_URL=https://jerom-world.onrender.com node tests/live.mjs   # against production (no teleport there)
 ```
 
 `tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice`. Also look at screenshots
@@ -99,7 +99,7 @@ start `npm start`, health `/healthz`) auto-deploys `master`.
    never ask for or print it.
 3. If a deploy sits in `update_in_progress` for several minutes, `POST .../deploys/<id>/cancel`
    and `POST .../deploys` to redeploy (happened once; the old version keeps serving meanwhile).
-4. Re-run the relevant e2e sections against production and send the user screenshots.
+4. Run `tests/live.mjs` against production (full e2e runs locally only) and send the user screenshots.
 
 The free plan sleeps when idle (first visit takes tens of seconds). Test bots on production are
 visible to real users — mention it if someone was online.
@@ -116,6 +116,9 @@ visible to real users — mention it if someone was online.
   collider. Buildings that could hide players extend their collider to the zone edge.
 - Things near the camera-side wall get occluded: keep important signs above wall height or on the
   north wall; the courtyard uses a steeper camera.
-- `window.__mvDebug.teleport` exists for tests and is usable from the browser console; offer to
-  gate it before real classroom use.
+- Teleport is blocked on the live site (user's request): `__mvDebug.teleport` is only added when
+  built with `VITE_MV_DEBUG=1`, which `tests/run-all.sh` sets. `tests/e2e.mjs` therefore cannot run
+  against production; use `tests/live.mjs` there. Never ship the flag to Render. The server still
+  only clamps moves to zone rectangles, so a hand-modified client could jump; add a server-side
+  speed check if that ever matters.
 - Real school plan PDFs are not committed — only room names/order go into `layout.js`.

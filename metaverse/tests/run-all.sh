@@ -2,10 +2,11 @@
 # Build, start a local server on :4100, run every test suite, stop the server.
 #   bash tests/run-all.sh              # everything
 #   bash tests/run-all.sh stairs rides # sim + bots + only these e2e sections
-# Against the live site instead (no local server): MV_URL=https://jerom-world.onrender.com node tests/e2e.mjs
+# The test build enables the teleport hook (VITE_MV_DEBUG=1); the live site has none, so against
+# production only `tests/live.mjs` runs: MV_URL=https://jerom-world.onrender.com node tests/live.mjs
 set -u
 cd "$(dirname "$0")/.."
-npm run build >/dev/null || { echo "build failed"; exit 1; }
+VITE_MV_DEBUG=1 npm run build >/dev/null || { echo "build failed"; exit 1; }
 NODE_ENV=production PORT=4100 node server/index.js >/tmp/mv-test-server.log 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null' EXIT

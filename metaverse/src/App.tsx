@@ -216,7 +216,10 @@ export default function App() {
     const w = window as unknown as { __mvVoice?: VoiceChat; __mvDebug?: object };
     w.__mvVoice = voice;
     w.__mvDebug = {
-      teleport: (x: number, z: number) => (debugTeleport.pending = { x, z }),
+      // Teleport only exists in test builds (VITE_MV_DEBUG=1); the live site has no teleport hook.
+      ...(import.meta.env.VITE_MV_DEBUG === "1" && {
+        teleport: (x: number, z: number) => (debugTeleport.pending = { x, z }),
+      }),
       pos: () => ({ ...selfPos }),
       rides: () => Object.fromEntries(rides),
       zoom: () => view.zoom,
