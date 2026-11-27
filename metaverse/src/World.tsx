@@ -10,6 +10,7 @@ import Park, { RideVehicles, resolvePark } from "./Park";
 import { RIDES, ZONE_RECTS, seatEndU, seatPose } from "../shared/layout.js";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 import Human from "./Human";
+import { Atmosphere, Sun } from "./Atmosphere";
 
 const PORTAL_COOLDOWN_MS = 800;
 // Outdoors: pulled back and aiming ahead so the building stays in view. Indoors: steep dollhouse view.
@@ -490,7 +491,7 @@ export default function World({ selfId, selfStart, players }: Props) {
   const dark = useDark();
   const [zone, setZone] = useState<ZoneId>("outdoor");
   const indoor = zone !== "outdoor" && zone !== "park";
-  const bg = indoor ? (dark ? "#1b1d22" : "#3a3f47") : dark ? "#141a24" : "#cfe8ff";
+  const bg = indoor ? (dark ? "#1b1d22" : "#3a3f47") : dark ? "#141a24" : "#d6e6f2"; // outdoors: the sky's haze at the horizon
   const fogFar = indoor ? 60 : 130; // outdoors: let the mountains show through the haze
 
   useEffect(() => {
@@ -515,21 +516,13 @@ export default function World({ selfId, selfStart, players }: Props) {
   }, []);
 
   return (
-    <Canvas shadows camera={{ fov: 50, position: [0, 9, 11], far: 2500 }} dpr={[1, 2]} className="canvas">
+    <Canvas shadows="soft" camera={{ fov: 50, position: [0, 9, 11], far: 2500 }} dpr={[1, 2]} className="canvas">
       <color attach="background" args={[bg]} />
       <fog attach="fog" args={[bg, indoor ? 25 : 40, fogFar]} />
       <FogFollowsZoom near={indoor ? 25 : 40} far={fogFar} />
-      <hemisphereLight args={[dark ? "#8090b0" : "#ffffff", dark ? "#202820" : "#88aa77", dark ? 0.6 : 0.9]} />
-      <directionalLight
-        position={[12, 20, 8]}
-        intensity={dark ? 0.7 : 1.4}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-30}
-        shadow-camera-right={30}
-        shadow-camera-top={30}
-        shadow-camera-bottom={-30}
-      />
+      <hemisphereLight args={[dark ? "#8090b0" : "#dfeeff", dark ? "#202820" : "#7d8f62", dark ? 0.5 : zone === "park" ? 0.6 : 0.2]} />
+      <Sun dark={dark} />
+      <Atmosphere outdoor={!indoor} dark={dark} park={zone === "park"} />
       {zone === "park" ? <Park dark={dark} /> : indoor ? <Interior zone={zone} dark={dark} /> : <School dark={dark} />}
       <LocalPlayer start={selfStart} onZone={setZone} />
       <RideVehicles />

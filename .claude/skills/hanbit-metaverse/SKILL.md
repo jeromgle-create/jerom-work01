@@ -20,7 +20,9 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `shared/layout.js` | **Single source of truth** for the world: zones, 13 building floors (113 rooms), campus doors, park zone, portals (doors/stairs/exits/rides), ride paths + `ridePose`/`seatPose`, `locationKey`. Imported by both client and server. |
 | `server/index.js` | Socket.IO relay: join/move (clamped to `ZONE_RECTS`, speed-checked: distance budget refilling at `MOVE_SPEED` 9 m/s up to `MOVE_BURST` 12 m; longer jumps only through a door/stairs portal, else `correct` snap-back; riders placed by the server from `seatPose`), state tick 15 Hz, chat scopes (near/group/all — **server picks recipients**), meeting groups, voice signaling relay, rides (vehicles, seats, departure). Serves `dist/`. |
 | `src/World.tsx` | Canvas, LocalPlayer (input, collisions, portals, rides, click-to-move path following, camera follow/pan/zoom), RemotePlayer (interpolation or ride pose), ClickToMove (tap vs drag), ZoomControls (pinch/wheel), fog-follows-zoom. Zoom range `ZOOM_MIN`/`ZOOM_MAX` = 0.5–8 in `src/net.ts`. |
-| `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. |
+| `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. Realistic pass: `Building` (floor bands, framed glass, pillars, parapet, green roof, rooftop tower/tank), `Entrances` (glass doors + canopies, visual only), `Cutaway` (남관 sinks while the player is in the courtyard), instanced `Forest` trees, noise `HILL`s. |
+| `src/look.ts` | Canvas-painted textures (grass, soil, concrete, brick, pavers, roof, stone) and `worldMapped(kind, metres)`: a MeshStandardMaterial sampling by world position (box projection) so instanced boxes get real-scale textures without UVs; `materials()` = shared set (+ glass, frame, steel, litGlass). `BoxInstances` takes `material`. |
+| `src/Atmosphere.tsx` | `Atmosphere`: Sky shader background outdoors by day (follows the camera), PMREM environment from a soft LDR gradient dome (outdoor) or RoomEnvironment (indoor/night), per-zone `environmentIntensity`. `Sun`: directional light + soft shadow box following the player. |
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
@@ -62,6 +64,14 @@ in `PARK_RIDES` + paths/durations in `RIDES` (layout). Keep fences as colliders 
 **Zoom range** — `ZOOM_MAX` in `src/net.ts` (now 8). Going higher also needs the Canvas camera
 `far` (World.tsx, 2500) and the ground planes in `School.tsx`/`Park.tsx` (+600) enlarged, and the
 `zoom` e2e check (`zoom > 7.9`) updated; look at max-zoom screenshots of campus, a floor and the park.
+
+**Graphics / look** — surfaces come from `look.ts` (no image files: textures are painted on canvases,
+so no downloads, licences or size). Change a colour on the item/instance; the grey texture multiplies
+it. Lighting lives in `Atmosphere.tsx` + the hemisphere light in `World.tsx`. Never light with the
+Sky shader itself (HDR: everything washes out white) — the env map is the LDR gradient dome; tune
+`environmentIntensity` per zone and compare before/after screenshots of the same views (field,
+main entrance, courtyard, gate, far zoom, phone, park, a floor, dark mode). Visual-only additions
+(canopies, doors, rooftop) need no collider; anything players could walk into does.
 
 **Avatar / character models** — `src/Human.tsx` + `public/models/` (sources and licence notes in its
 README). Compress new models with glTF Transform (`optimize --compress meshopt`, webp textures);
