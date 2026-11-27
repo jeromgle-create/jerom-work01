@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, type RideState } from "./net";
+import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, type RideState } from "./net";
 import { RIDES } from "../shared/layout.js";
 import { locationAt } from "./zones";
 import type { ChatMsg, ChatScope, Member, Player } from "./types";
@@ -218,6 +218,7 @@ export default function App() {
       pos: () => ({ ...selfPos }),
       rides: () => Object.fromEntries(rides),
       zoom: () => view.zoom,
+      order: () => ({ ...moveOrder }),
     };
   }, [voice]);
 
