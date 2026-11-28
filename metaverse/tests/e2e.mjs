@@ -1,7 +1,7 @@
 // Browser end-to-end checks with Playwright (software WebGL). Needs a running server.
 //   MV_URL=http://localhost:4100 node tests/e2e.mjs            # all sections
 //   node tests/e2e.mjs stairs rides                             # only some
-// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe
+// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe, viewpad
 // Note: software rendering runs at a few fps, so walking is slow; timeouts are generous.
 import * as L from "../shared/layout.js";
 import { check, done, join, launch, order, pan, place, pos, rides, round, selfId, teleport, touch, walkUntil, zoom } from "./lib.mjs";
@@ -292,6 +292,45 @@ if (on("cafe")) {
     await b.waitForTimeout(2500);
     await b.screenshot({ path: `${shots}/cafe-wide.png` });
   }
+  await closeAll();
+}
+
+if (on("viewpad")) {
+  console.log("\n# view pad: turn, tilt, zoom, slide and reset the camera with the corner buttons");
+  const a = await open("카메라");
+  await teleport(a, -14, 18);
+  await a.waitForTimeout(3000);
+  const v = () => a.evaluate(() => window.__mvDebug.view());
+  const hold = async (sel, ms) => {
+    const b = await a.locator(`[data-vp="${sel}"]`).boundingBox();
+    await a.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await a.mouse.down();
+    await a.waitForTimeout(ms);
+    await a.mouse.up();
+    await a.waitForTimeout(300);
+  };
+  await hold("yaw+", 1500);
+  await hold("pitch+", 1200);
+  await hold("zoom+", 1200);
+  const v1 = await v();
+  check(v1.yaw > 0.1 && v1.pitch > 0.05 && v1.zoom > 1.05, "holding turn / tilt / zoom-out buttons changes the camera", JSON.stringify(v1));
+  const p0 = await pos(a);
+  await a.keyboard.down("w");
+  await a.waitForTimeout(1200);
+  await a.keyboard.up("w");
+  await a.waitForTimeout(400);
+  const p1 = await pos(a);
+  const dx = p1.x - p0.x, dz = p1.z - p0.z, d = Math.hypot(dx, dz);
+  const fx = -Math.sin(v1.yaw), fz = -Math.cos(v1.yaw);
+  check(d > 0.5 && (dx * fx + dz * fz) / d > 0.9, "after turning, W walks towards where the camera looks", `${dx.toFixed(2)},${dz.toFixed(2)} vs ${fx.toFixed(2)},${fz.toFixed(2)}`);
+  await hold("panX+", 1000);
+  const pn = await pan(a);
+  check(Math.hypot(pn.x, pn.z) > 0.5, "the arrow buttons slide the view", JSON.stringify(pn));
+  await a.click(".vp-reset");
+  await a.waitForTimeout(2500);
+  const v2 = await v();
+  const pn2 = await pan(a);
+  check(v2.yaw === 0 && v2.pitch === 0 && v2.zoom === 1 && Math.hypot(pn2.x, pn2.z) < 0.3, "⌖ puts the camera back as it was", JSON.stringify({ ...v2, ...pn2 }));
   await closeAll();
 }
 
