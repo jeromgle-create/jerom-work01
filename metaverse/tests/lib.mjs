@@ -53,7 +53,9 @@ export async function join(browser, name, { device, viewport = { width: 1100, he
   await page.fill("#nick", name);
   await page.click("button.primary");
   await page.waitForSelector(".minimap", { timeout: 60000 });
-  if (!device && (await page.$(".chat.open"))) await page.click(".chat-toggle"); // keep the scene clear
+  // the first frames compile every material (slow under software rendering): let them finish first
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  if (!device && (await page.$(".chat.open"))) await page.click(".chat-toggle", { timeout: 90000 }); // keep the scene clear
   return page;
 }
 

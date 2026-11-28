@@ -104,11 +104,22 @@ if (on("rides")) {
   check(ra.vehicle === rb.vehicle && ra.start === rb.start && ra.seat !== rb.seat, "same train, same departure, different seats", `${ra.vehicle} seats ${ra.seat}/${rb.seat}`);
   check([ra.hud, rb.hud].some((h) => h.includes("출발까지")), "HUD shows the departure countdown", `${ra.hud} / ${rb.hud}`);
   await a.waitForFunction((s) => Date.now() > s + 4000, ra.start, { timeout: 30000 });
-  // Same car = side by side. Positions are read from two pages that render at a few fps, so a
-  // moving train puts up to ~1.5 m between the two readings; allow for it.
-  const [pa, pb] = await Promise.all([pos(a), pos(b)]);
-  const gap = Math.hypot(pa.x - pb.x, pa.z - pb.z);
-  check(L.seatCar(ra.ride, ra.seat) === L.seatCar(rb.ride, rb.seat) && gap < 3, "riding side by side (same car)", `car ${L.seatCar(ra.ride, ra.seat)}/${L.seatCar(rb.ride, rb.seat)}, ${gap.toFixed(2)} m apart`);
+  // Same car = side by side: both seats' poses at the same moment are next to each other. Each page
+  // is checked against its own seat's pose at the time it was read (pages render at a few fps, so
+  // reading two pages "at once" can be a second apart and put metres between moving riders; a page
+  // also shows the pose of its last frame, up to ~1 s old under software rendering).
+  const at = async (p, r) => {
+    const { pos: q, t } = await p.evaluate(() => ({ pos: window.__mvDebug.pos(), t: Date.now() }));
+    const u = Math.min(1, Math.max(0, (t - r.start) / L.RIDES[r.ride].duration));
+    const e = L.seatPose(r.ride, r.dir, u, r.seat);
+    return Math.hypot(q.x - e.x, q.z - e.z);
+  };
+  const [da, db] = await Promise.all([at(a, ra), at(b, rb)]);
+  const u0 = 0.4;
+  const ea = L.seatPose(ra.ride, ra.dir, u0, ra.seat);
+  const eb = L.seatPose(rb.ride, rb.dir, u0, rb.seat);
+  const gap = Math.hypot(ea.x - eb.x, ea.z - eb.z);
+  check(L.seatCar(ra.ride, ra.seat) === L.seatCar(rb.ride, rb.seat) && gap < 1.5 && da < 8 && db < 8, "riding side by side (same car)", `car ${L.seatCar(ra.ride, ra.seat)}/${L.seatCar(rb.ride, rb.seat)}, seats ${gap.toFixed(2)} m apart, off the path ${da.toFixed(1)}/${db.toFixed(1)} m`);
   for (const p of [a, b]) await p.waitForFunction(() => !window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 40000 });
   const end = await pos(a);
   check(L.zoneAt(end.x) === "park" && end.z < 0, "both stepped off at the zoo stop");
