@@ -1,6 +1,6 @@
 ---
 name: hanbit-metaverse
-description: Work on the 한빛초등학교 metaverse in metaverse/ (Vite + React Three Fiber client, Express + Socket.IO server, deployed on Render as jerom-world). Use this skill for ANY change to that app - adding or moving rooms, floors, buildings or park attractions, editing the floor plan data, chat / meeting / voice behaviour, rides (elephant train, sky lift), minimap, click-to-move, camera pan/zoom, mobile controls, bug fixes, testing, or deploying - even when the user only says "메타버스", "학교 맵", "교실 추가", "대공원", "배포해줘" or names a room without mentioning code.
+description: Work on the 한빛초등학교 metaverse in metaverse/ (Vite + React Three Fiber client, Express + Socket.IO server, deployed on Render as jerom-world). Use this skill for ANY change to that app - adding or moving rooms, floors, buildings or park attractions, editing the floor plan data, chat / meeting / voice behaviour, rides (elephant train, sky lift), minimap, click-to-move, camera pan/zoom, mobile controls, graphics / realism (sky, lighting, textures, buildings, trees), avatars / characters, anti-cheat (teleport, speed check), bug fixes, testing, or deploying - even when the user only says "메타버스", "학교 맵", "교실 추가", "대공원", "그래픽", "캐릭터", "순간이동", "배포해줘" or names a room without mentioning code.
 ---
 
 # 한빛초등학교 metaverse
@@ -20,8 +20,10 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `shared/layout.js` | **Single source of truth** for the world: zones, 13 building floors (113 rooms), campus doors, park zone, portals (doors/stairs/exits/rides), ride paths + `ridePose`/`seatPose`, `locationKey`. Imported by both client and server. |
 | `server/index.js` | Socket.IO relay: join/move (clamped to `ZONE_RECTS`, speed-checked: distance budget refilling at `MOVE_SPEED` 9 m/s up to `MOVE_BURST` 12 m; longer jumps only through a door/stairs portal, else `correct` snap-back; riders placed by the server from `seatPose`), state tick 15 Hz, chat scopes (near/group/all — **server picks recipients**), meeting groups, voice signaling relay, rides (vehicles, seats, departure). Serves `dist/`. |
 | `src/World.tsx` | Canvas, LocalPlayer (input, collisions, portals, rides, click-to-move path following, camera follow/pan/zoom), RemotePlayer (interpolation or ride pose), ClickToMove (tap vs drag), ZoomControls (pinch/wheel), fog-follows-zoom. Zoom range `ZOOM_MIN`/`ZOOM_MAX` = 0.5–8 in `src/net.ts`. |
-| `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. |
-| `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). |
+| `src/School.tsx` | Campus scenery + colliders (`resolveCollisions`). Exports building rects used by the minimap. Realistic pass: `Building` (floor bands, framed glass, pillars, parapet, green roof, rooftop tower/tank), `Entrances` (glass doors + canopies, visual only), `Cutaway` (남관 sinks while the player is in the courtyard), instanced `Forest` trees, noise `HILL`s. |
+| `src/look.ts` | Canvas-painted textures (grass, soil, concrete, brick, pavers, roof, stone) and `worldMapped(kind, metres)`: a MeshStandardMaterial sampling by world position (box projection) so instanced boxes get real-scale textures without UVs; `materials()` = shared set (+ glass, frame, steel, litGlass). `BoxInstances` takes `material`. |
+| `src/Atmosphere.tsx` | `Atmosphere` (owns `scene.background`): Sky shader rendered ONCE into a cube map (static sun) as the day background, PMREM environment from a soft LDR gradient dome (outdoor) or RoomEnvironment (indoor/night), per-zone `environmentIntensity`. `Sun`: directional light + soft shadow box following the player. |
+| `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). Realistic pass: items carry `m` (`grain` for colours in `WOODS`, `planks`/`vinyl` from `k.floor`), rendered per material (`interiorMaterials()`); terrazzo corridor, plaster walls; daylight windows on the outer north wall wherever no board/cabinet/sign (taller than the sill) uses it. |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
 | `src/Human.tsx` | Avatar: rigged mannequin `public/models/xbot.glb` (Mixamo X Bot, meshopt) cloned per player with `SkeletonUtils.clone`, tinted with the player colour; idle/walk/run blended by measured speed; sitting pose by bending leg bones while riding. Capsule `Avatar` in World.tsx is the loading fallback. |
@@ -63,6 +65,14 @@ in `PARK_RIDES` + paths/durations in `RIDES` (layout). Keep fences as colliders 
 `far` (World.tsx, 2500) and the ground planes in `School.tsx`/`Park.tsx` (+600) enlarged, and the
 `zoom` e2e check (`zoom > 7.9`) updated; look at max-zoom screenshots of campus, a floor and the park.
 
+**Graphics / look** — surfaces come from `look.ts` (no image files: textures are painted on canvases,
+so no downloads, licences or size). Change a colour on the item/instance; the grey texture multiplies
+it. Lighting lives in `Atmosphere.tsx` + the hemisphere light in `World.tsx`. Never light with the
+Sky shader itself (HDR: everything washes out white) — the env map is the LDR gradient dome; tune
+`environmentIntensity` per zone and compare before/after screenshots of the same views (field,
+main entrance, courtyard, gate, far zoom, phone, park, a floor, dark mode). Visual-only additions
+(canopies, doors, rooftop) need no collider; anything players could walk into does.
+
 **Avatar / character models** — `src/Human.tsx` + `public/models/` (sources and licence notes in its
 README). Compress new models with glTF Transform (`optimize --compress meshopt`, webp textures);
 keep only needed clips. Another Mixamo body can NOT borrow the X Bot's clips by bone name: rest
@@ -93,6 +103,15 @@ Testing gotchas learned the hard way:
   long presses. App code must use `e.timeStamp`, not `performance.now()`, for tap timing.
 - Two heavy pages in one browser slow each other; close contexts between sections.
 - Random-walk tests must start from standable points (`isFree`), not inside furniture.
+- Never run `npm run build` while `run-all.sh` is running: the test server serves `dist/`, a plain
+  build drops the teleport hook mid-run and the results are invalid. Rebuild with
+  `VITE_MV_DEBUG=1` or wait.
+- Richer graphics lower software-WebGL fps (≈4 → 2): timing between two pages gets tight, so start
+  multi-player actions in parallel (`Promise.all`, as in the shared-train check), never rely on a
+  page being quick. After moving one player, wait until the OTHER page sees them there
+  (`__mvDebug.remote(id)`) before measuring anything that depends on distance (voice volume, chat).
+  Wait for conditions (`waitForFunction`) instead of fixed sleeps: a floor's first visit takes ~5 s
+  under software rendering (build + material compile).
 
 ## Deploy
 

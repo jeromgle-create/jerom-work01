@@ -96,13 +96,17 @@ if (on("rides")) {
     await p.keyboard.up("w");
     return (await rides(p))[await selfId(p)];
   };
-  const ra = await board(a, P + 12, 56.4);
-  const rb = await board(b, P + 12.5, 56.4);
+  // Both walk onto the stop at the same time (boarding one after the other can miss the 8 s wait
+  // when software rendering is slow).
+  const [ra, rb] = await Promise.all([board(a, P + 12, 56.4), board(b, P + 12.5, 56.4)]);
   check(ra.vehicle === rb.vehicle && ra.start === rb.start && ra.seat !== rb.seat, "same train, same departure, different seats", `${ra.vehicle} seats ${ra.seat}/${rb.seat}`);
   check((await place(a)).includes("출발까지"), "HUD shows the departure countdown", await place(a));
   await a.waitForFunction((s) => Date.now() > s + 4000, ra.start, { timeout: 30000 });
-  const [pa, pb] = [await pos(a), await pos(b)];
-  check(Math.hypot(pa.x - pb.x, pa.z - pb.z) < 1.5, "riding side by side", `${Math.hypot(pa.x - pb.x, pa.z - pb.z).toFixed(2)} m apart`);
+  // Same car = side by side. Positions are read from two pages that render at a few fps, so a
+  // moving train puts up to ~1.5 m between the two readings; allow for it.
+  const [pa, pb] = await Promise.all([pos(a), pos(b)]);
+  const gap = Math.hypot(pa.x - pb.x, pa.z - pb.z);
+  check(L.seatCar(ra.ride, ra.seat) === L.seatCar(rb.ride, rb.seat) && gap < 3, "riding side by side (same car)", `car ${L.seatCar(ra.ride, ra.seat)}/${L.seatCar(rb.ride, rb.seat)}, ${gap.toFixed(2)} m apart`);
   for (const p of [a, b]) await p.waitForFunction(() => !window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 40000 });
   const end = await pos(a);
   check(L.zoneAt(end.x) === "park" && end.z < 0, "both stepped off at the zoo stop");
@@ -181,9 +185,11 @@ if (on("pan") || on("zoom")) {
 if (on("map")) {
   console.log("\n# minimap and full map");
   const p = await open("지도");
+  const t0 = Date.now();
   await teleport(p, L.FLOOR_BY_ID.E2.cx - 10, 0);
-  await p.waitForTimeout(1500);
-  check((await p.textContent(".minimap-title")).includes("본관 2층"), "minimap follows the current floor");
+  // the first visit to a floor builds it (and compiles its materials): slow under software rendering
+  await p.waitForFunction(() => document.querySelector(".minimap-title")?.textContent.includes("본관 2층"), null, { timeout: 20000 }).catch(() => {});
+  check((await p.textContent(".minimap-title")).includes("본관 2층"), "minimap follows the current floor", `${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await p.click(".minimap");
   await p.waitForSelector(".map-card");
   await p.click('.map-tabs button:has-text("서울대공원")');
@@ -203,16 +209,20 @@ if (on("voice")) {
   await a.click(".voice-btn");
   await b.click(".voice-btn");
   await b.waitForFunction(() => window.__mvVoice.debug().some((p) => p.state === "connected" && p.hasAudio), null, { timeout: 30000 });
-  const vol = async () => {
+  const aId = await selfId(a);
+  // Measure only once the listener sees the speaker at the new spot (slow pages lag behind).
+  const vol = async (x, z) => {
+    if (x !== undefined) {
+      await teleport(a, x, z);
+      await b.waitForFunction(([id, x, z]) => { const t = window.__mvDebug.remote(id); return t && Math.hypot(t.x - x, t.z - z) < 0.5; }, [aId, x, z], { timeout: 20000 }).catch(() => {});
+    }
     await b.waitForTimeout(900);
     return (await b.evaluate(() => window.__mvVoice.debug()))[0].volume;
   };
   check((await vol()) > 0.95, "2 m apart: full volume");
-  await teleport(a, -8, 17);
-  const v10 = await vol();
+  const v10 = await vol(-8, 17);
   check(Math.abs(v10 - 0.46) < 0.05, "10 m apart: about half volume", `${v10}`);
-  await teleport(a, 0, 26);
-  check((await vol()) === 0, "20 m apart: silent");
+  check((await vol(0, 26)) === 0, "20 m apart: silent");
   await closeAll();
 }
 

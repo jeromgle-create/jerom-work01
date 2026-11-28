@@ -3,13 +3,16 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { BoxInstances, Sign, pushOut, type Collider, type V3 } from "./parts";
+import { materials, worldMapped } from "./look";
 import { CORRIDOR_HALF, FLOOR_BY_ID, OPEN_KINDS, PORTALS, ROOM_D, SCHOOL_NAME, exitDoor, type Floor, type Room } from "./zones";
 
 const WALL_H = 2.4;
 const LOW_WALL_H = 1;
 const WALL_T = 0.2;
 
-type Item = { p: V3; s: V3; c: string };
+/** `m` picks the surface: wooden furniture grain, floor boards, vinyl tiles; default painted / plastic. */
+type Mat = "grain" | "planks" | "vinyl";
+type Item = { p: V3; s: V3; c: string; m?: Mat };
 type SignDef = { p: V3; size: [number, number]; text: string; bg: string; fg: string };
 type Built = { items: Item[]; signs: SignDef[]; solids: Collider[] };
 
@@ -52,7 +55,7 @@ class RoomKit {
     if (Math.abs(x) + sx / 2 > this.w / 2 + 0.01 || Math.abs(z) + sz / 2 > this.d / 2 + 0.01) return;
     const X = this.cx + x;
     const Z = this.cz + z;
-    this.out.items.push({ p: [X, y, Z], s: [sx, sy, sz], c });
+    this.out.items.push({ p: [X, y, Z], s: [sx, sy, sz], c, m: WOODS.has(c) ? "grain" : undefined });
     if (solid) this.out.solids.push({ kind: "box", minX: X - sx / 2, maxX: X + sx / 2, minZ: Z - sz / 2, maxZ: Z + sz / 2 });
   }
   sign(x: number, y: number, z: number, sw: number, sh: number, text: string, bg: string, fg: string) {
@@ -69,7 +72,7 @@ class RoomKit {
     return left[1] - left[0] >= right[1] - right[0] ? left : right;
   }
   floor(c: string) {
-    this.out.items.push({ p: [this.cx, 0.006, this.cz], s: [this.w - 0.02, 0.01, this.d - 0.02], c });
+    this.out.items.push({ p: [this.cx, 0.006, this.cz], s: [this.w - 0.02, 0.01, this.d - 0.02], c, m: c === WOOD ? "planks" : "vinyl" });
   }
   /** Board on the front wall (facing the room), centered in the free span. */
   board(text: string, bg = "#2f5d46", fg = "#f4f1e6", maxW = 5) {
@@ -114,6 +117,8 @@ const BOOKS = ["#c0392b", "#2980b9", "#27ae60", "#f39c12", "#8e44ad", "#16a085",
 const BINS = ["#f6bd60", "#84a59d", "#f28482", "#90bede", "#c3b1e1"];
 const CHAIRS = ["#4f86c6", "#e07a5f", "#81b29a", "#f2cc8f"];
 const WOOD = "#c99d6b";
+/** Colours used for wooden furniture (they get wood grain). */
+const WOODS = new Set(["#e8d2a6", "#b9874f", "#9a6b3f", "#a47148", "#8a6a45", "#8d6346", "#c99d6b", "#b08968", "#7f5539", "#6f4e37"]);
 
 function desk(k: RoomKit, x: number, z: number, i: number) {
   k.box(x, 0.36, z, 0.9, 0.72, 0.55, "#e8d2a6");
@@ -543,6 +548,22 @@ export function resolveInterior(zone: string, pos: THREE.Vector3) {
   pos.z = THREE.MathUtils.clamp(pos.z, f.cz + f.minZ + 0.5, f.cz + f.maxZ - 0.5);
 }
 
+let interiorMats: ReturnType<typeof makeInteriorMaterials> | null = null;
+function makeInteriorMaterials() {
+  return {
+    plain: new THREE.MeshStandardMaterial({ roughness: 0.6 }), // painted metal / plastic / fabric
+    grain: worldMapped("grain", 1.2, { roughness: 0.55 }),
+    planks: worldMapped("planks", 2.4, { roughness: 0.45 }),
+    vinyl: worldMapped("vinyl", 2.4, { roughness: 0.4 }),
+    terrazzo: worldMapped("terrazzo", 3, { roughness: 0.3, color: "#d9dbd3" }),
+    plaster: worldMapped("plaster", 3, { roughness: 0.9 }),
+    dayGlass: new THREE.MeshStandardMaterial({ color: "#cfe6f7", emissive: "#bcdcf5", emissiveIntensity: 0.55, roughness: 0.1 }),
+    nightGlass: new THREE.MeshStandardMaterial({ color: "#1d2a40", roughness: 0.1, metalness: 0.5 }),
+    frame: materials().frame,
+  };
+}
+const interiorMaterials = () => (interiorMats ??= makeInteriorMaterials());
+
 export default function Interior({ zone, dark }: { zone: string; dark: boolean }) {
   const f = FLOOR_BY_ID[zone];
   const data = floorData(zone);
@@ -558,14 +579,45 @@ export default function Interior({ zone, dark }: { zone: string; dark: boolean }
     }
     return out;
   }, [data, dark]);
+  const M = interiorMaterials();
+  const groups = useMemo(() => {
+    const by: Record<string, Item[]> = { plain: [], grain: [], planks: [], vinyl: [] };
+    for (const it of data.items) by[it.m ?? "plain"].push(it);
+    return by;
+  }, [data]);
+  const windows = useMemo(() => {
+    // daylight windows along the outer back wall (inner face), between 1.0 m and 2.1 m
+    const glass: Item[] = [];
+    const frames: Item[] = [];
+    const z = f.minZ + WALL_T / 2 + 0.02;
+    // wall spans already used by boards, cabinets and shelves taller than the sill
+    const busy = data.items
+      .filter((it) => it.p[2] - it.s[2] / 2 < f.minZ + 1.2 && it.p[1] + it.s[1] / 2 > 0.95 && it.s[0] < f.maxX - f.minX - 1)
+      .map((it) => [it.p[0] - it.s[0] / 2, it.p[0] + it.s[0] / 2])
+      .concat(data.signs.filter((s) => s.p[2] < f.minZ + 1.2 && s.p[1] + s.size[1] / 2 > 0.95).map((s) => [s.p[0] - s.size[0] / 2, s.p[0] + s.size[0] / 2]));
+    const walls = data.segs.filter((s) => Math.abs((s.minZ + s.maxZ) / 2 - f.minZ) < 0.2);
+    for (let x = f.minX + 1.4; x < f.maxX - 1.2; x += 2.4) {
+      if (busy.some(([a, b]) => x + 1.05 > a && x - 1.05 < b)) continue;
+      if (!walls.some((s) => x - 1.05 >= s.minX && x + 1.05 <= s.maxX)) continue;
+      glass.push({ p: [x, 1.55, z], s: [2.0, 1.1, 0.02], c: "#ffffff" });
+      frames.push({ p: [x, 2.12, z + 0.02], s: [2.1, 0.06, 0.05], c: "#ffffff" }, { p: [x, 0.98, z + 0.04], s: [2.2, 0.06, 0.12], c: "#ffffff" });
+      frames.push({ p: [x - 1.03, 1.55, z + 0.02], s: [0.06, 1.2, 0.05], c: "#ffffff" }, { p: [x, 1.55, z + 0.02], s: [0.04, 1.1, 0.04], c: "#ffffff" });
+    }
+    return { glass, frames };
+  }, [f, data]);
+  M.terrazzo.color.set(dark ? "#8f9489" : "#d9dbd3");
   return (
     <group position={[f.cx, 0, f.cz]}>
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0, (f.minZ + f.maxZ) / 2]} receiveShadow>
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0, (f.minZ + f.maxZ) / 2]} receiveShadow material={M.terrazzo}>
         <planeGeometry args={[f.maxX - f.minX, f.maxZ - f.minZ]} />
-        <meshStandardMaterial color={dark ? "#8f9489" : "#d4d8ce"} />
       </mesh>
-      <BoxInstances items={data.items} />
-      <BoxInstances items={walls} />
+      <BoxInstances items={groups.plain} material={M.plain} />
+      <BoxInstances items={groups.grain} material={M.grain} />
+      <BoxInstances items={groups.planks} material={M.planks} shadow={false} />
+      <BoxInstances items={groups.vinyl} material={M.vinyl} shadow={false} />
+      <BoxInstances items={walls} material={M.plaster} />
+      <BoxInstances items={windows.glass} material={dark ? M.nightGlass : M.dayGlass} shadow={false} />
+      <BoxInstances items={windows.frames} material={M.frame} shadow={false} />
       {data.signs.map((s, i) => (
         <Sign key={i} p={s.p} size={s.size} text={s.text} bg={s.bg} fg={s.fg} />
       ))}

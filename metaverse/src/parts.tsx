@@ -78,7 +78,7 @@ export function Box({ p, s, c, shadow = true }: { p: V3; s: V3; c: string; shado
 }
 
 /** Many identical boxes in one draw call. Each item: position + optional per-item size and color. */
-export function BoxInstances({ items, shadow = true }: { items: { p: V3; s: V3; c: string }[]; shadow?: boolean }) {
+export function BoxInstances({ items, shadow = true, material }: { items: { p: V3; s: V3; c: string }[]; shadow?: boolean; material?: THREE.Material }) {
   const ref = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     const mesh = ref.current;
@@ -96,9 +96,9 @@ export function BoxInstances({ items, shadow = true }: { items: { p: V3; s: V3; 
     mesh.computeBoundingSphere();
   }, [items]);
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, items.length]} castShadow={shadow} receiveShadow>
+    <instancedMesh ref={ref} args={[undefined, material, items.length]} castShadow={shadow} receiveShadow>
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial />
+      {!material && <meshStandardMaterial />}
     </instancedMesh>
   );
 }
