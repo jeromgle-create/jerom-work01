@@ -63,6 +63,10 @@ const taken = (id: string) => cafe.seat === id || [...seats.values()].includes(i
 function Building() {
   const root = useMemo(() => {
     const r = buildBuilding();
+    // No real lamp light: one point light makes every surface in the park costlier to draw (slow
+    // phones); the bulb still glows and the sun lights the room once the roof is hidden.
+    const lamp = r.getObjectByName("Bld_LampLight");
+    lamp?.removeFromParent();
     // move table 1 (and its stools) to CAFE_TABLES[1]
     for (const n of ["Bld_Table_1", "Bld_TableLeg_1", "Bld_Stool_1_0", "Bld_Stool_1_1"]) {
       const o = r.getObjectByName(n);
