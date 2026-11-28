@@ -5,7 +5,7 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { Box, BoxInstances, Pole, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
+import { Box, BoxInstances, ImageSign, Pole, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
 import { CAMPUS_DOORS, OUTDOOR, PARK, PARK_GATE_MAT, SCHOOL_NAME } from "./zones";
 import { materials, worldMapped } from "./look";
 import { selfPos } from "./net";
@@ -396,9 +396,16 @@ function Grounds({ dark }: { dark: boolean }) {
       <BoxInstances items={items.out} />
       <BoxInstances items={items.bricks} material={materials().brick} />
       <BoxInstances items={items.beds} material={materials().soil} />
-      <Sign p={[(GATE.minX + GATE.maxX) / 2, 3.1, OUTDOOR.maxZ + 0.62]} size={[6, 0.6]} text={`${SCHOOL_NAME} 정문`} bg="#2f5f9e" fg="#ffffff" />
+      {/* school name plate on a beam over the gate (designed in Adobe Express: public/signs) */}
+      <BoxInstances items={[{ p: [(GATE.minX + GATE.maxX) / 2, 3.55, OUTDOOR.maxZ + 0.6], s: [GATE.maxX - GATE.minX + 1.8, 1.9, 0.3], c: "#8d8478" }]} material={materials().stone} />
+      <ImageSign
+        url="/signs/gate.webp"
+        p={[(GATE.minX + GATE.maxX) / 2, 3.55, OUTDOOR.maxZ + 0.77]}
+        size={[6.4, 1.6]}
+        fallback={{ p: [(GATE.minX + GATE.maxX) / 2, 3.1, OUTDOOR.maxZ + 0.62], size: [6, 0.6], text: `${SCHOOL_NAME} 정문`, bg: "#2f5f9e", fg: "#ffffff" }}
+      />
       <Sign p={[1.5, 1.6, 33.55]} size={[2.2, 0.45]} text="보안관실" bg="#ffffff" fg="#2f5f9e" />
-      <Sign p={[(GATE.minX + GATE.maxX) / 2, 4.0, OUTDOOR.maxZ + 0.62]} size={[4.6, 0.55]} text={`▼ ${PARK.name} 가는 길`} bg="#e09f3e" fg="#ffffff" />
+      <Sign p={[(GATE.minX + GATE.maxX) / 2, 4.85, OUTDOOR.maxZ + 0.62]} size={[4.6, 0.55]} text={`▼ ${PARK.name} 가는 길`} bg="#e09f3e" fg="#ffffff" />
       <Sign p={[-38.5, 2.9, -29.95]} size={[2.4, 0.45]} text="후문 · 보안관실" bg="#ffffff" fg="#2f5f9e" />
       <Sign p={[38, 2.5, -28.45]} size={[2.6, 0.45]} text="분리수거장" bg="#ffffff" fg="#2a9d8f" />
       <Sign p={[-38.3, 1.3, 19.2]} size={[2.6, 0.45]} text="모래 놀이터" bg="#fff3b0" fg="#7a4b00" />
@@ -495,7 +502,7 @@ COLLIDERS.push(
 );
 
 /** Wooded hills of the neighbouring park, seen beyond the campus walls. */
-const HILL = (() => {
+export const HILL = (() => {
   const g = new THREE.SphereGeometry(1, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2);
   const p = g.attributes.position as THREE.BufferAttribute;
   const v = new THREE.Vector3();

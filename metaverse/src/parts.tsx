@@ -1,5 +1,6 @@
 // Shared building blocks: primitive meshes, instanced boxes, text signs and 2D collisions.
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { Suspense, useLayoutEffect, useMemo, useRef } from "react";
+import { useLoader } from "@react-three/fiber";
 import * as THREE from "three";
 
 export const PLAYER_R = 0.45;
@@ -78,7 +79,7 @@ export function Box({ p, s, c, shadow = true }: { p: V3; s: V3; c: string; shado
 }
 
 /** Many identical boxes in one draw call. Each item: position + optional per-item size and color. */
-export function BoxInstances({ items, shadow = true, material }: { items: { p: V3; s: V3; c: string }[]; shadow?: boolean; material?: THREE.Material }) {
+export function BoxInstances({ items, shadow = true, material, geometry }: { items: { p: V3; s: V3; c: string }[]; shadow?: boolean; material?: THREE.Material; geometry?: THREE.BufferGeometry }) {
   const ref = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     const mesh = ref.current;
@@ -96,8 +97,8 @@ export function BoxInstances({ items, shadow = true, material }: { items: { p: V
     mesh.computeBoundingSphere();
   }, [items]);
   return (
-    <instancedMesh ref={ref} args={[undefined, material, items.length]} castShadow={shadow} receiveShadow>
-      <boxGeometry args={[1, 1, 1]} />
+    <instancedMesh ref={ref} args={[geometry, material, items.length]} castShadow={shadow} receiveShadow>
+      {!geometry && <boxGeometry args={[1, 1, 1]} />}
       {!material && <meshStandardMaterial />}
     </instancedMesh>
   );
@@ -147,3 +148,23 @@ export function Sign({ p, size, text, bg, fg, ry = 0 }: SignProps) {
   );
 }
 
+
+/** A designed sign image (public/signs, made in Adobe Express) on a plane; a text sign shows while it loads. */
+export function ImageSign({ url, p, size, ry = 0, fallback }: { url: string; p: V3; size: [number, number]; ry?: number; fallback: SignProps }) {
+  return (
+    <Suspense fallback={<Sign {...fallback} />}>
+      <ImagePlane url={url} p={p} size={size} ry={ry} />
+    </Suspense>
+  );
+}
+function ImagePlane({ url, p, size, ry }: { url: string; p: V3; size: [number, number]; ry: number }) {
+  const tex = useLoader(THREE.TextureLoader, url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return (
+    <mesh position={p} rotation-y={ry}>
+      <planeGeometry args={size} />
+      <meshStandardMaterial map={tex} roughness={0.6} />
+    </mesh>
+  );
+}

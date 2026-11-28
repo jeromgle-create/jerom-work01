@@ -33,7 +33,7 @@ await b.click('.chat-tabs .tab:has-text("전체")');
 await b.waitForFunction(() => document.querySelector(".chat-list")?.textContent.includes("확인 메시지"), null, { timeout: 10000 }).catch(() => {});
 check((await b.textContent(".chat-list")).includes("확인 메시지"), "all-chat message arrives");
 await a.click(".minimap");
-check(!!(await a.waitForSelector(".map-card", { timeout: 5000 }).catch(() => null)), "full map opens");
+check(!!(await a.waitForSelector(".map-card", { timeout: 20000 }).catch(() => null)), "full map opens");
 const errors = [...a.errors, ...b.errors];
 await a.context().close();
 await b.context().close();

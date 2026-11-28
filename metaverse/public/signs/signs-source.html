@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="hz:slide-selector" content=".slide">
+<title>한빛초등학교 · 서울대공원 간판</title>
+<link rel="stylesheet" href="https://use.typekit.net/hgb4mnl.css">
+<style>
+  body { margin: 0; background: #ffffff; }
+  .slide { position: relative; overflow: hidden; margin: 0 0 40px 0; }
+  .t { position: absolute; left: 0; width: 100%; text-align: center; font-family: "source-han-sans-korean", sans-serif; }
+
+  /* 1. School gate sign: 1600 x 400 */
+  .gate { width: 1600px; height: 400px; background: #1f3f6e; }
+  .gate .frame { position: absolute; left: 24px; top: 24px; width: 1544px; height: 344px; border: 6px solid #d9b45a; border-radius: 18px; }
+  .gate .emblem { position: absolute; left: 92px; top: 112px; width: 176px; height: 176px; }
+  .gate .name { top: 88px; left: 150px; width: 1450px; font-weight: 900; font-size: 168px; letter-spacing: 18px; color: #ffffff; line-height: 200px; }
+  .gate .sub { top: 292px; left: 150px; width: 1450px; font-weight: 700; font-size: 40px; letter-spacing: 16px; color: #d9b45a; line-height: 48px; }
+
+  /* 2. Park entrance sign: 1800 x 240 */
+  .park { width: 1800px; height: 240px; background: #1f7a6e; }
+  .park .band { position: absolute; left: 0; top: 196px; width: 1800px; height: 44px; background: #16594f; }
+  .park .crown { position: absolute; top: 40px; width: 80px; height: 80px; border-radius: 40px; background: #9fe0b8; }
+  .park .trunk { position: absolute; top: 116px; width: 16px; height: 44px; background: #0f4a42; }
+  .park .name { top: 22px; font-weight: 900; font-size: 140px; letter-spacing: 30px; color: #ffffff; line-height: 170px; }
+  .park .sub { top: 198px; font-weight: 700; font-size: 30px; letter-spacing: 14px; color: #cdeee8; line-height: 40px; }
+</style>
+</head>
+<body>
+  <div class="slide gate" data-canvas-width="1600" data-canvas-height="400">
+    <div class="frame"></div>
+    <svg class="emblem" viewBox="0 0 176 176" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="88" cy="88" r="84" fill="#ffffff"/>
+      <g fill="#d9b45a">
+        <circle cx="88" cy="88" r="30"/>
+        <rect x="84" y="18" width="8" height="30" rx="4"/>
+        <rect x="84" y="128" width="8" height="30" rx="4"/>
+        <rect x="18" y="84" width="30" height="8" rx="4"/>
+        <rect x="128" y="84" width="30" height="8" rx="4"/>
+        <rect x="84" y="18" width="8" height="30" rx="4" transform="rotate(45 88 88)"/>
+        <rect x="84" y="128" width="8" height="30" rx="4" transform="rotate(45 88 88)"/>
+        <rect x="18" y="84" width="30" height="8" rx="4" transform="rotate(45 88 88)"/>
+        <rect x="128" y="84" width="30" height="8" rx="4" transform="rotate(45 88 88)"/>
+      </g>
+    </svg>
+    <div class="t name">한빛초등학교</div>
+    <div class="t sub">HANBIT ELEMENTARY SCHOOL</div>
+  </div>
+
+  <div class="slide park" data-canvas-width="1800" data-canvas-height="240">
+    <div class="crown" style="left: 140px"></div>
+    <div class="trunk" style="left: 172px"></div>
+    <div class="crown" style="left: 1580px"></div>
+    <div class="trunk" style="left: 1612px"></div>
+    <div class="band"></div>
+    <div class="t name">서울대공원</div>
+    <div class="t sub">SEOUL GRAND PARK</div>
+  </div>
+</body>
+</html>

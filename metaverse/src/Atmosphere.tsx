@@ -73,8 +73,7 @@ export function Atmosphere({ outdoor, dark, park, bg }: { outdoor: boolean; dark
   useEffect(() => {
     scene.environment = daySky ? envs.outdoor : envs.room;
     scene.background = daySky ? skyBg.texture : new THREE.Color(bg);
-    // The park keeps its plain colours (its realistic pass comes later): less sky light there.
-    scene.environmentIntensity = daySky ? (park ? 0.3 : 0.75) : dark ? 0.12 : 0.3;
+    scene.environmentIntensity = daySky ? (park ? 0.7 : 0.75) : dark ? 0.12 : 0.3;
   }, [scene, envs, skyBg, daySky, dark, park, bg]);
   return null;
 }

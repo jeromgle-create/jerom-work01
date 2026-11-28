@@ -230,6 +230,41 @@ export function worldMapped(kind: Kind, metres: number, params: THREE.MeshStanda
   return mat;
 }
 
+/** Tiling ripple normal map for water (sum of sine waves → normals). */
+let waterNormals: THREE.CanvasTexture | null = null;
+export function waterNormalMap() {
+  if (waterNormals) return waterNormals;
+  const n = 256;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = n;
+  const ctx = cv.getContext("2d")!;
+  const img = ctx.createImageData(n, n);
+  const h = (x: number, y: number) => {
+    const u = (x / n) * Math.PI * 2;
+    const v = (y / n) * Math.PI * 2;
+    // many incommensurate directions so the tiling doesn't read as a grid
+    return (
+      Math.sin(u * 3 + v * 2) * 0.4 + Math.sin(u * 5 - v * 4 + 1.3) * 0.3 + Math.sin(u * 9 + v * 7 + 2.1) * 0.18 +
+      Math.sin(-u * 2 + v * 11) * 0.14 + Math.sin(u * 13 - v * 6 + 0.7) * 0.1 + Math.sin(u * 7 + v * 15 + 4) * 0.08
+    );
+  };
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const dx = h(x + 1, y) - h(x - 1, y);
+      const dy = h(x, y + 1) - h(x, y - 1);
+      const len = Math.hypot(dx * 4, dy * 4, 1);
+      const i = (y * n + x) * 4;
+      img.data[i] = ((-dx * 4) / len * 0.5 + 0.5) * 255;
+      img.data[i + 1] = ((-dy * 4) / len * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (1 / len) * 0.5 * 255 + 127;
+      img.data[i + 3] = 255;
+    }
+  ctx.putImageData(img, 0, 0);
+  waterNormals = new THREE.CanvasTexture(cv);
+  waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+  return waterNormals;
+}
+
 /** Shared materials (create once; many meshes use them). */
 let shared: ReturnType<typeof makeShared> | null = null;
 function makeShared() {
@@ -245,6 +280,11 @@ function makeShared() {
     frame: new THREE.MeshStandardMaterial({ color: "#d9dcdf", roughness: 0.35, metalness: 0.6 }),
     litGlass: new THREE.MeshStandardMaterial({ color: "#3a3528", emissive: "#e8c97a", emissiveIntensity: 0.9, roughness: 0.2 }), // night: lights on
     steel: new THREE.MeshStandardMaterial({ color: "#c9cdd2", roughness: 0.3, metalness: 0.8 }),
+    leaves: worldMapped("grass", 1.6, { roughness: 0.95 }), // hedges and leafy masses
+    wood: worldMapped("grain", 1.2, { roughness: 0.7 }),
+    water: new THREE.MeshStandardMaterial({ color: "#3d7f9e", roughness: 0.12, metalness: 0.25, envMapIntensity: 1.4, normalMap: waterNormalMap(), normalScale: new THREE.Vector2(0.18, 0.18) }),
+    pool: new THREE.MeshStandardMaterial({ color: "#7cc4dc", roughness: 0.08, metalness: 0.2, envMapIntensity: 1.4 }), // small calm water
+    domeGlass: new THREE.MeshStandardMaterial({ color: "#d6ecf7", roughness: 0.05, metalness: 0.6, transparent: true, opacity: 0.38, envMapIntensity: 1.5, side: THREE.DoubleSide, depthWrite: false }),
     metalRoof: new THREE.MeshStandardMaterial({ color: "#4f86c6", roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide }),
   };
 }
