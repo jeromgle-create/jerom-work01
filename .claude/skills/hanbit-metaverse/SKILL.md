@@ -59,6 +59,14 @@ it proves every room is still reachable.
 (stairs and portals are generated). A new building also needs a campus door in `CAMPUS_DOORS` and a
 building mesh + collider in `School.tsx`. Mark ground floors `exit: true`.
 
+**Sky lift** — one cable loop defined in `shared/layout.js` (`LIFT_LINE`: `station` cable height,
+`ramp` fraction, `side` = line offset, `hang` = cable → seated feet; `liftCableY(k)`, `LIFT_LEFT`). Riders
+use `ridePose` with `lane`: a→b on the left line, b→a on the right, height = cable − hang, so they board
+at seat height. Lift mats sit under the waiting chair, landings beside the arriving line (PARK_RIDES).
+`Park.tsx`: `loopPoint(s)` (lines + half-circles round both bullwheels) drives the tube cable and the
+ambient chairs; `LiftStation` (platform, bullwheel, drive housing, frame, roof), towers with crossarms
+and sheave trains, shared `Chair`. Lift mats are drawn on the platform (y 0.13).
+
 **Park changes** — scenery/colliders in `Park.tsx` (park-local coords), quick-travel/ride stations
 in `PARK_RIDES` + paths/durations in `RIDES` (layout). Keep fences as colliders so pens stay closed.
 

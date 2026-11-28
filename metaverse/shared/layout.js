@@ -128,7 +128,10 @@ const P = (x) => PARK.cx + x;
 /** Park quick-travel stations (local coords): stepping on a mat rides to the other end. */
 export const PARK_RIDES = [
   { name: "코끼리열차", a: { mat: [10, 14, 53.5, 55], land: [12, 57] }, b: { mat: [38, 42, -12, -10.5], land: [40, -8] } },
-  { name: "스카이리프트", a: { mat: [-16, -12, 35, 36.5], land: [-14, 39] }, b: { mat: [62, 66, -45, -43.5], land: [64, -41] } },
+  // Sky lift: board where the chairs leave each station (the mat is under the waiting chair) and
+  // step off beside the line the chairs arrive on (see LIFT_LINE: up line on the left of a→b).
+  // a = (-14, 37.5), b = (64, -46), left of a→b ≈ (0.73, 0.68), lines 1.1 m from the axis.
+  { name: "스카이리프트", a: { mat: [-14.3, -12.1, 37.6, 38.9], land: [-15.9, 35.7] }, b: { mat: [62.1, 64.3, -47.4, -46.1], land: [65.9, -44.2] } },
 ];
 export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 
@@ -136,7 +139,29 @@ export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 // Every client computes a rider's pose from the same path and the server's start time, so riders
 // are seen in their train car / lift chair (including height) without syncing y.
 const LAKE_LOOP = { x: 8, z: 4, rx: 27, rz: 24 };
-export const LIFT_LINE = { a: [-14, 37.5], b: [64, -46], y: 9 };
+/**
+ * Sky lift as a real chairlift: one cable loop. The up line (a→b) runs `side` metres to the left of
+ * the a–b axis, the down line (b→a) to the right; at each end it turns around a horizontal bullwheel
+ * centred on the axis end. Inside the stations the cable is low (`station`) so chairs pass at seat
+ * height; it climbs to the first tower over `ramp` of the length and cruises at `y`.
+ */
+export const LIFT_LINE = { a: [-14, 37.5], b: [64, -46], y: 9, station: 2.45, ramp: 0.1, side: 1.1, hang: 1.75 };
+const LIFT_DIR = (() => {
+  const dx = LIFT_LINE.b[0] - LIFT_LINE.a[0];
+  const dz = LIFT_LINE.b[1] - LIFT_LINE.a[1];
+  const l = Math.hypot(dx, dz);
+  return { x: dx / l, z: dz / l, len: l };
+})();
+/** Unit vector to the left of a→b (the up line's side). */
+export const LIFT_LEFT = { x: -LIFT_DIR.z, z: LIFT_DIR.x };
+export const LIFT_LEN = LIFT_DIR.len;
+/** Cable height at fraction k (0 = station a, 1 = station b) along the line. */
+export function liftCableY(k) {
+  const { y, station, ramp } = LIFT_LINE;
+  const e = Math.max(0, Math.min(1, Math.min(k, 1 - k) / ramp));
+  const s = e * e * (3 - 2 * e); // smooth climb out of / into the stations
+  return station + (y - station) * s;
+}
 /** @param {[number, number][]} pts local polyline -> sampler over arc length */
 function polyline(pts) {
   const acc = [0];
@@ -160,7 +185,6 @@ const TRAIN_PATH = (() => {
   return polyline(pts);
 })();
 const LIFT_PATH = polyline([LIFT_LINE.a, LIFT_LINE.b]);
-const SEAT_Y = LIFT_LINE.y - 1.4 - 0.35; // avatar feet height when sitting in a chair
 /** Ride specs: index matches PARK_RIDES. Durations in ms. */
 // Shared vehicles: the first rider opens a vehicle that waits `boardWait` ms at the station; friends who
 // step on the same mat meanwhile take the next seats. Seats fill car by car, two per car.
@@ -171,8 +195,10 @@ export const RIDES = [
     duration: 20000,
     vehicle: "chair",
     sample: LIFT_PATH,
-    // rise out of the station, cruise under the cable, set down at the other station
-    height: (u) => SEAT_Y * Math.max(0, Math.min(1, u / 0.08, (1 - u) / 0.08)),
+    // seated feet height: the chair hangs `hang` below the cable, which is low in the stations
+    height: (u) => liftCableY(Math.max(0, Math.min(1, u))) - LIFT_LINE.hang,
+    // up riders (a→b) sit on the left line, down riders on the right line
+    lane: LIFT_LINE.side,
     capacity: 2,
     seatsPerCar: 2,
     boardWait: 4000,
@@ -189,7 +215,13 @@ export function ridePose(ride, dir, u) {
   const r = RIDES[ride];
   const k = dir === "ab" ? u : 1 - u;
   const p = r.sample(k);
-  return { x: PARK.cx + p.x, z: PARK.cz + p.z, y: r.height(k), ry: dir === "ab" ? p.ry : p.ry + Math.PI };
+  const lane = r.lane ? (dir === "ab" ? r.lane : -r.lane) : 0; // chairlift: which cable line
+  return {
+    x: PARK.cx + p.x + LIFT_LEFT.x * lane,
+    z: PARK.cz + p.z + LIFT_LEFT.z * lane,
+    y: r.height(k),
+    ry: dir === "ab" ? p.ry : p.ry + Math.PI,
+  };
 }
 /** Car index of a seat (0 = head car). */
 export const seatCar = (ride, seat) => Math.floor(seat / RIDES[ride].seatsPerCar);
