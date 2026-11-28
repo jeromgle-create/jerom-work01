@@ -13,16 +13,15 @@ import { ARM, hands, type ArmPose } from "./hands";
 const E = new THREE.Euler();
 const QA = new THREE.Quaternion();
 const QB = new THREE.Quaternion();
-const POSES = ["hold", "table", "mouth"] as const;
-/** Add the blended pose rotation to one bone (after the clips set it this frame); later poses win. */
-function bend(bone: THREE.Object3D | undefined, part: "arm" | "fore" | "hand", A: typeof ARM, p: ArmPose) {
+type Bend = { arm: number[]; fore: number[]; hand: number[] };
+/** Add the blended pose rotations to one bone (after the clips set it this frame); later poses win. */
+function bend(bone: THREE.Object3D | undefined, part: keyof Bend, poses: [Bend, number][]) {
   if (!bone) return;
   QB.identity();
   let any = false;
-  for (const k of POSES) {
-    const w = p[k] ?? 0;
+  for (const [pose, w] of poses) {
     if (w <= 0) continue;
-    const r = A[k][part];
+    const r = pose[part];
     QA.setFromEuler(E.set(r[0], r[1], r[2]));
     QB.slerp(QA, w);
     any = true;
@@ -173,6 +172,7 @@ function HumanModel({ color, riding, arm, hand, seed = "" }: Props) {
       arm: b("mixamorigRightArm"),
       fore: b("mixamorigRightForeArm"),
       hand: b("mixamorigRightHand"),
+      left: { arm: b("mixamorigLeftArm"), fore: b("mixamorigLeftForeArm"), hand: b("mixamorigLeftHand") },
     };
   }, [scene]);
   const body = useRef<THREE.Group>(null);
@@ -214,10 +214,17 @@ function HumanModel({ color, riding, arm, hand, seed = "" }: Props) {
     const dbg = import.meta.env.VITE_MV_DEBUG === "1" ? (window as unknown as { __mvArm?: typeof ARM; __mvArmForce?: ArmPose }) : undefined;
     const A = dbg?.__mvArm ?? ARM;
     const p = (hand && dbg?.__mvArmForce) || arm?.();
-    if (p) {
-      bend(legs.arm, "arm", A, p);
-      bend(legs.fore, "fore", A, p);
-      bend(legs.hand, "hand", A, p);
+    // Right arm: the cup pose if there is one, else (seated) the forearm rests on the thigh.
+    const right: [Bend, number][] = p
+      ? [[A.hold, p.hold ?? 0], [A.table, p.table ?? 0], [A.mouth, p.mouth ?? 0]]
+      : seated
+        ? [[A.lap, 1]]
+        : [];
+    // Left arm: seated, on the table when the right hand is at one, else on the thigh.
+    const left: [Bend, number][] = seated ? [[(p?.table ?? 0) > 0 ? A.left.table : A.left.lap, 1]] : [];
+    for (const k of ["arm", "fore", "hand"] as const) {
+      bend(legs[k], k, right);
+      bend(legs.left[k], k, left);
     }
     if (hand && legs.hand) {
       legs.hand.updateWorldMatrix(true, false);

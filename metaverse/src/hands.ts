@@ -15,6 +15,13 @@ export const ARM = {
   hold: { arm: [0, 0.3, 0], fore: [0, 1.3, 0], hand: [0, 0, 0] },
   table: { arm: [0, 0.9, 0], fore: [0, 0.9, 0], hand: [0, 0, 0] },
   mouth: { arm: [0.4, 0.7, 0], fore: [0, 2.3, 0], hand: [0, 0, 0] },
+  /** seated with nothing in the hand: forearm resting on the thigh */
+  lap: { arm: [0, 0.3, 0], fore: [0, 1.0, 0], hand: [0, 0, 0] },
+  /** the left arm (mirrored rig: other signs), used whenever the body sits */
+  left: {
+    lap: { arm: [0, -0.3, 0], fore: [0, -1.0, 0], hand: [0, 0, 0] },
+    table: { arm: [0, -1.0, 0], fore: [0, -0.4, 0], hand: [0, 0, 0] },
+  },
   /** grip point from the hand bone, in the bone's own units (cm) */
   grip: [0, 8, 3],
 };
