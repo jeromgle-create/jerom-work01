@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { ZOOM_MAX, ZOOM_MIN, debugTeleport, input, labelEls, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
+import { ZOOM_MAX, ZOOM_MIN, cafe, debugTeleport, input, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
 import { findPath } from "./pathfind";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
-import { RIDES, ZONE_RECTS, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE_SEATS, PARK, RIDES, ZONE_RECTS, cafeStandSpot, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE_SEAT_Y } from "./Cafe";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 import Human from "./Human";
 import { Atmosphere, Sun } from "./Atmosphere";
+import { placeLabel } from "./labels";
 
 const PORTAL_COOLDOWN_MS = 800;
 // Outdoors: pulled back and aiming ahead so the building stays in view. Indoors: steep dollhouse view.
@@ -35,24 +37,10 @@ type Props = { selfId: string; selfStart: Player; players: Player[] };
 
 const SPEED = 6;
 const SEND_MS = 66;
-const tmp = new THREE.Vector3();
 /** Progress of a ride (0 while waiting at the station), or null once this rider's car has arrived. */
 function rideProgress(r: RideState) {
   const u = (serverNow() - r.start) / RIDES[r.ride].duration;
   return u >= seatEndU(r.ride, r.seat) ? null : Math.max(0, u);
-}
-
-/** Place a player's DOM label above their head in screen space. */
-function placeLabel(id: string, obj: THREE.Object3D, camera: THREE.Camera, w: number, h: number) {
-  const el = labelEls.get(id);
-  if (!el) return;
-  tmp.set(obj.position.x, obj.position.y + 2.45, obj.position.z).project(camera);
-  if (tmp.z > 1 || Math.abs(tmp.x) > 1.2 || Math.abs(tmp.y) > 1.2) {
-    el.style.visibility = "hidden";
-    return;
-  }
-  el.style.visibility = "visible";
-  el.style.transform = `translate(${((tmp.x + 1) / 2) * w}px, ${((1 - tmp.y) / 2) * h}px) translate(-50%, -100%)`;
 }
 
 function useDark() {
@@ -106,6 +94,8 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
   /** Click-to-move path (waypoints) and which click it belongs to. */
   const path = useRef<{ seq: number; pts: { x: number; z: number }[]; i: number } | null>(null);
   /** Current ride (train car / lift chair) and where to step off. */
+  /** Cafe stool we sit on (to step off beside it when the server stands us up). */
+  const seatedAt = useRef<number | null>(null);
   const riding = useRef<
     | (RideState & { land: { x: number; z: number; ry: number } })
     | { pending: true; land: { x: number; z: number; ry: number } }
@@ -163,7 +153,23 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       }
     }
     const len = Math.hypot(mx, mz);
-    if (riding.current && "pending" in riding.current) {
+    // Lawn cafe stool: the server seats us; stay put until we stand up (then step off beside it).
+    const mySeat = cafe.get(start.id)?.seat ?? null;
+    if (mySeat !== null) {
+      const st = CAFE_SEATS[mySeat];
+      pos.current.set(PARK.cx + st.x, CAFE_SEAT_Y, st.z);
+      ry.current = st.ry;
+      seatedAt.current = mySeat;
+      if (path.current) {
+        path.current = null;
+        moveOrder.active = false;
+      }
+    } else if (seatedAt.current !== null) {
+      const sp = cafeStandSpot(seatedAt.current);
+      pos.current.set(PARK.cx + sp.x, 0, sp.z);
+      seatedAt.current = null;
+      lastSent.current.t = 0;
+    } else if (riding.current && "pending" in riding.current) {
       // Waiting for the server to assign a vehicle and seat (one round trip).
     } else if (riding.current) {
       // Seated: the vehicle waits for friends, then carries everyone; movement keys do nothing until arrival.
@@ -283,7 +289,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
 
   return (
     <group ref={group}>
-      <Person id={start.id} color={start.color} riding={() => !!riding.current} />
+      <Person id={start.id} color={start.color} riding={() => !!riding.current || seatedAt.current !== null} />
     </group>
   );
 }
@@ -468,6 +474,14 @@ function RemotePlayer({ player }: { player: Player }) {
       placeLabel(player.id, g, camera, size.width, size.height);
       return;
     }
+    const seat = cafe.get(player.id)?.seat;
+    if (seat !== null && seat !== undefined) {
+      const st = CAFE_SEATS[seat];
+      g.position.set(PARK.cx + st.x, CAFE_SEAT_Y, st.z);
+      g.rotation.y = st.ry;
+      placeLabel(player.id, g, camera, size.width, size.height, 1.95);
+      return;
+    }
     g.position.y = 0;
     const a = Math.min(1, dt * 10);
     if (Math.hypot(t.x - g.position.x, t.z - g.position.z) > 8) {
@@ -482,7 +496,7 @@ function RemotePlayer({ player }: { player: Player }) {
   });
   return (
     <group ref={group}>
-      <Person id={player.id} color={player.color} riding={() => rides.has(player.id)} />
+      <Person id={player.id} color={player.color} riding={() => rides.has(player.id) || (cafe.get(player.id)?.seat ?? null) !== null} />
     </group>
   );
 }

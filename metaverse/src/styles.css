@@ -232,3 +232,39 @@ button, input { font: inherit; color: inherit; }
 .chat-form input:disabled, .chat-form button:disabled { opacity: 0.55; cursor: default; }
 .chat-list { height: 130px; }
 }
+
+/* Lawn cafe: context buttons (above the voice buttons, right) and the menu */
+.name.npc { background: rgba(46, 139, 106, 0.85); }
+.cafe-actions {
+  position: absolute; right: 12px; bottom: 64px; z-index: 22; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  max-width: min(280px, calc(100vw - 24px));
+}
+.cafe-btn {
+  display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px;
+  font-weight: 700; font-size: 0.95rem; cursor: pointer; background: var(--panel); color: inherit; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.cafe-btn.first { background: #2e8b6a; color: #fff; border-color: transparent; }
+.cafe-btn kbd {
+  font: inherit; font-size: 0.75rem; padding: 0 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.25);
+}
+.cafe-msg {
+  margin: 0; padding: 6px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); color: var(--error); font-size: 0.9rem;
+}
+.cafe-menu {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 30; width: min(300px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cafe-menu h2 { margin: 0; font-size: 1.05rem; }
+.cafe-menu ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cafe-menu li button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left;
+}
+.cafe-menu li button:hover, .cafe-menu li button:focus-visible { border-color: #2e8b6a; outline: none; }
+.cafe-menu small { margin-left: auto; opacity: 0.7; font-weight: 400; }
+.dot-c { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid rgba(0, 0, 0, 0.15); }
+@media (pointer: coarse) {
+  .cafe-actions { bottom: 214px; }
+  .cafe-btn kbd { display: none; }
+}

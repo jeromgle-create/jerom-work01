@@ -9,6 +9,7 @@ export type Player = {
   voice?: boolean;
   muted?: boolean;
   ride?: { ride: number; dir: "ab" | "ba"; start: number; vehicle: string; seat: number } | null;
+  cafe?: { seat: number | null; order: import("./net").CafeOrder | null } | null;
 };
 export type ChatScope = "near" | "group" | "all";
 export type ChatMsg = {

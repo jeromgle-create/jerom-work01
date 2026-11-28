@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE, CAFE_MENU, CAFE_SEATS, CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, cafeStandSpot, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -33,6 +33,9 @@ const MOVE_SLACK = 0.5; // collision push-out
 const PORTAL_REACH = 3; // how far from a portal mat / landing a jump through it may start / end
 const ALLOW_TELEPORT = process.env.MV_ALLOW_TELEPORT === "1";
 const CORRECT_MS = 500; // at most one snap-back message per player per this many ms
+// Lawn cafe: how close (m) a guest must be to sit on a stool; a sip takes this long (ms).
+const SEAT_REACH = 2.2;
+const SIP_MS = 2200;
 // ICE servers for WebRTC. Set ICE_SERVERS to a JSON array to add a TURN relay later without code changes.
 const ICE_SERVERS = (() => {
   try {
@@ -91,7 +94,9 @@ const clean = (s, max) =>
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim()
     .slice(0, max);
-const publicPlayer = ({ id, name, color, x, z, ry, voice, muted, ride }) => ({ id, name, color, x, z, ry, voice, muted, ride: ride ?? null });
+const publicPlayer = ({ id, name, color, x, z, ry, voice, muted, ride, cafe }) => ({ id, name, color, x, z, ry, voice, muted, ride: ride ?? null, cafe: cafe ?? null });
+/** Cafe state of one guest as clients see it: their seat and their order (null when none). */
+const cafeView = (p) => ({ id: p.id, ...p.cafe });
 const voiceState = (p) => ({ id: p.id, voice: p.voice, muted: p.muted });
 
 io.on("connection", (socket) => {
@@ -118,6 +123,8 @@ io.on("connection", (socket) => {
       muted: false,
       group: null,
       ride: null, // { ride, dir, start, vehicle, seat } while sitting in the elephant train or a lift chair
+      // lawn cafe: seat index (or null) and order { item, readyAt, stage: "making"|"ready"|"held"|"placed", seat, left, sipUntil }
+      cafe: { seat: null, order: null },
       rideTimer: null,
       budget: MOVE_BURST, // metres the player may still move right now (see MOVE_SPEED)
       lastMoveAt: Date.now(),
@@ -135,6 +142,11 @@ io.on("connection", (socket) => {
     const now = Date.now();
     p.budget = Math.min(MOVE_BURST, p.budget + (MOVE_SPEED * (now - p.lastMoveAt)) / 1000);
     p.lastMoveAt = now;
+    if (p.cafe.seat !== null) {
+      // On a cafe stool: stay there until "cafe:stand".
+      p.budget = MOVE_BURST;
+      return;
+    }
     if (p.ride) {
       // Seated: the ride decides where the player is.
       const r = p.ride;
@@ -264,7 +276,7 @@ io.on("connection", (socket) => {
     const p = players.get(socket.id);
     const ride = m?.ride;
     const dir = m?.dir === "ba" ? "ba" : "ab";
-    if (!p || !Number.isInteger(ride) || !RIDES[ride] || p.ride) return ack?.({ ok: false });
+    if (!p || !Number.isInteger(ride) || !RIDES[ride] || p.ride || p.cafe.seat !== null) return ack?.({ ok: false });
     // must be standing at the boarding station
     const st = dir === "ab" ? PARK_RIDES[ride].a : PARK_RIDES[ride].b;
     const [x0, x1, z0, z1] = st.mat;
@@ -304,10 +316,88 @@ io.on("connection", (socket) => {
     if (p) endRide(p);
   });
 
+  // --- Lawn cafe: the server takes orders, keeps the barista's timing and gives out stools. ---
+  const near = (p, x, z, r) => Math.hypot(p.x - (PARK.cx + x), p.z - z) <= r;
+  const sendCafe = (p) => io.emit("cafe", cafeView(p));
+  socket.on("cafe:order", (m, ack) => {
+    const p = players.get(socket.id);
+    const item = m?.item;
+    if (!p || !Number.isInteger(item) || !CAFE_MENU[item] || p.ride) return ack?.({ ok: false });
+    if (p.cafe.order && p.cafe.order.stage !== "placed") return ack?.({ ok: false, error: "이미 주문한 것이 있어요." });
+    if (!near(p, CAFE.order.x, CAFE.order.z, CAFE.order.reach)) return ack?.({ ok: false, error: "카운터 앞에서 주문해 주세요." });
+    const now = Date.now();
+    // An empty cup left on the table is cleared by the next order.
+    p.cafe.order = { item, readyAt: now + CAFE_MENU[item].prep, stage: "making", seat: null, left: CAFE_MENU[item].sips, sipUntil: 0 };
+    sendCafe(p);
+    ack?.({ ok: true });
+  });
+  socket.on("cafe:pickup", (_m, ack) => {
+    const p = players.get(socket.id);
+    const o = p?.cafe.order;
+    // small tolerance: the client's idea of server time can be a few hundred ms off
+    if (!p || !o || o.stage !== "making" || Date.now() < o.readyAt - 500) return ack?.({ ok: false });
+    if (!near(p, CAFE.order.x, CAFE.order.z, CAFE.order.reach)) return ack?.({ ok: false, error: "카운터 앞에서 받아 주세요." });
+    o.stage = "held";
+    sendCafe(p);
+    ack?.({ ok: true });
+  });
+  socket.on("cafe:sit", (m, ack) => {
+    const p = players.get(socket.id);
+    const i = m?.seat;
+    const s = CAFE_SEATS[i];
+    if (!p || !Number.isInteger(i) || !s || s.npc || p.ride || p.cafe.seat !== null) return ack?.({ ok: false });
+    if (!near(p, s.x, s.z, SEAT_REACH)) return ack?.({ ok: false });
+    // One guest per stool: the first request wins.
+    for (const o of players.values()) if (o.cafe.seat === i) return ack?.({ ok: false, error: "다른 사람이 앉아 있는 자리예요." });
+    p.cafe.seat = i;
+    p.x = PARK.cx + s.x;
+    p.z = s.z;
+    p.ry = s.ry;
+    const o = p.cafe.order;
+    if (o && o.stage === "held") {
+      o.stage = "placed"; // put it on the table in front of the stool
+      o.seat = i;
+    }
+    dirty.add(p.id);
+    sendCafe(p);
+    ack?.({ ok: true, seat: i });
+  });
+  const standUp = (p) => {
+    if (p.cafe.seat === null) return;
+    const st = cafeStandSpot(p.cafe.seat);
+    p.cafe.seat = null;
+    p.x = PARK.cx + st.x;
+    p.z = st.z;
+    p.budget = MOVE_BURST;
+    p.lastMoveAt = Date.now();
+    dirty.add(p.id);
+    sendCafe(p);
+  };
+  socket.on("cafe:stand", (_m, ack) => {
+    const p = players.get(socket.id);
+    if (!p || p.cafe.seat === null) return ack?.({ ok: false });
+    const o = p.cafe.order;
+    if (o && o.sipUntil > Date.now()) return ack?.({ ok: false }); // finish the sip first
+    const st = cafeStandSpot(p.cafe.seat);
+    standUp(p);
+    ack?.({ ok: true, x: PARK.cx + st.x, z: st.z });
+  });
+  socket.on("cafe:sip", (_m, ack) => {
+    const p = players.get(socket.id);
+    const o = p?.cafe.order;
+    const now = Date.now();
+    if (!p || !o || o.stage !== "placed" || o.seat !== p.cafe.seat || o.left <= 0 || o.sipUntil > now) return ack?.({ ok: false });
+    o.left -= 1;
+    o.sipUntil = now + SIP_MS;
+    sendCafe(p);
+    ack?.({ ok: true });
+  });
+
   socket.on("disconnect", () => {
     const p = players.get(socket.id);
     if (!p) return;
     clearTimeout(p.rideTimer);
+    if (p.cafe.seat !== null || p.cafe.order) io.emit("cafe", { id: p.id, seat: null, order: null });
     players.delete(socket.id);
     dirty.delete(socket.id);
     io.emit("playerLeft", socket.id);

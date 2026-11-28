@@ -43,3 +43,13 @@ export const ZOOM_MAX = 8; // pinch out / wheel: up to 8x the default camera dis
 
 /** Click / tap-to-move order from the pointer handler to the local player (seq bumps on each click). */
 export const moveOrder: { seq: number; x: number; z: number; active: boolean } = { seq: 0, x: 0, z: 0, active: false };
+
+// ---------- lawn cafe ----------
+export type CafeOrder = { item: number; readyAt: number; stage: "making" | "ready" | "held" | "placed"; seat: number | null; left: number; sipUntil: number };
+export type CafeState = { seat: number | null; order: CafeOrder | null };
+/** Cafe seat and order of every player (this one included), from the server. readyAt / sipUntil are server time. */
+export const cafe = new Map<string, CafeState>();
+/** Speech bubbles raised by the scene (barista, cafe customers) for the HUD to show. */
+export const bubbleBus = new EventTarget();
+export const sayBubble = (id: string, text: string, ms = 4500) =>
+  bubbleBus.dispatchEvent(new CustomEvent("say", { detail: { id, text, ms } }));
