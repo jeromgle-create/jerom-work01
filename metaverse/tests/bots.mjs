@@ -1,6 +1,7 @@
 // Server rules checked with plain Socket.IO clients ("bots"), no browser:
 //  - chat delivery: near (3 m, same room), meeting group (chained, hysteresis), all
 //  - ride boarding guards and shared vehicles (seats, departure, capacity)
+//  - lawn cafe: orders, pickup timing, one guest per stool, reserved table, sips
 // Needs a running server: MV_URL=http://localhost:4100 node tests/bots.mjs
 import { io } from "socket.io-client";
 import * as L from "../shared/layout.js";
@@ -89,6 +90,48 @@ const [c1, c2, c3] = [await bot("C1", top.x, top.z), await bot("C2", top.x + 0.5
 await wait(300);
 const [l1, l2, l3] = [await ask(c1, { ride: 1, dir: "ba" }), await ask(c2, { ride: 1, dir: "ba" }), await ask(c3, { ride: 1, dir: "ba" })];
 check(l1.vehicle === l2.vehicle && l3.ok && l3.vehicle !== l1.vehicle, "ride: lift chairs seat two; the third rider gets the next chair");
+bots.forEach((b) => b.s.close());
+bots.length = 0;
+
+// ---------- lawn cafe ----------
+const CF = L.CAFE;
+const W = (q) => ({ x: L.PARK.cx + q.x, z: q.z });
+const cafeAsk = (b, ev, m = {}) => new Promise((r) => b.s.emit(ev, m, r));
+const counter = W(CF.order);
+const g1 = await bot("G1", counter.x - 30, counter.z); // in the park, far from the counter
+await wait(300);
+check(!(await cafeAsk(g1, "cafe:order", { item: 0 })).ok, "cafe: ordering far from the counter is refused");
+move(g1, counter.x, counter.z);
+const g2 = await bot("G2", counter.x + 0.6, counter.z);
+await wait(300);
+const seen = [];
+g2.s.on("cafe", (c) => seen.push(c));
+check((await cafeAsk(g1, "cafe:order", { item: 0 })).ok, "cafe: ordering at the counter works");
+check(!(await cafeAsk(g1, "cafe:order", { item: 1 })).ok, "cafe: a second order while one is pending is refused");
+check(!(await cafeAsk(g1, "cafe:pickup")).ok, "cafe: the drink can't be picked up before it is made");
+await wait(L.CAFE_MENU[0].prep + 200);
+check((await cafeAsk(g1, "cafe:pickup")).ok, "cafe: picking up after the barista's time works");
+await wait(300); // the broadcast to others may land just after the ack
+check(seen.some((c) => c.id === g1.s.id && c.order?.stage === "held"), "cafe: other players learn the guest is carrying the drink");
+const s0 = W(L.CAFE_SEATS[0]);
+move(g1, s0.x, s0.z + 0.8);
+move(g2, s0.x + 0.4, s0.z + 0.8);
+await wait(400);
+const sit1 = await cafeAsk(g1, "cafe:sit", { seat: 0 });
+const sit2 = await cafeAsk(g2, "cafe:sit", { seat: 0 });
+check(sit1.ok && !sit2.ok, "cafe: one guest per stool (the second is refused)");
+const npcSeat = L.CAFE_SEATS.findIndex((x) => x.npc);
+move(g2, W(L.CAFE_SEATS[npcSeat]).x, W(L.CAFE_SEATS[npcSeat]).z - 0.8);
+await wait(300);
+check(!(await cafeAsk(g2, "cafe:sit", { seat: npcSeat })).ok, "cafe: the reserved customers' table can't be taken");
+seen.length = 0;
+check((await cafeAsk(g1, "cafe:sip")).ok, "cafe: seated with the drink on the table, a sip works");
+check(!(await cafeAsk(g1, "cafe:stand")).ok, "cafe: standing up mid-sip waits for the sip");
+await wait(2400);
+check(seen.some((c) => c.id === g1.s.id && c.order?.left === L.CAFE_MENU[0].sips - 1 && c.order?.stage === "placed"), "cafe: the sip is shared (one less left, still on the table)");
+const up1 = await cafeAsk(g1, "cafe:stand");
+check(up1.ok && Math.abs(up1.z - (L.CAFE_SEATS[0].z + 0.8)) < 1e-6, "cafe: standing up puts the guest beside the stool");
+check((await cafeAsk(g2, "cafe:sit", { seat: 0 })).ok === false, "cafe: sitting needs to be next to the stool");
 bots.forEach((b) => b.s.close());
 done();
 process.exit(process.exitCode ?? 0);

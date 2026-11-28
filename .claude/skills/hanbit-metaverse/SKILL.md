@@ -25,6 +25,9 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/Atmosphere.tsx` | `Atmosphere` (owns `scene.background`): Sky shader rendered ONCE into a cube map (static sun) as the day background, PMREM environment from a soft LDR gradient dome (outdoor) or RoomEnvironment (indoor/night), per-zone `environmentIntensity`. `Sun`: directional light + soft shadow box following the player. |
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). Realistic pass: items carry `m` (`grain` for colours in `WOODS`, `planks`/`vinyl` from `k.floor`), rendered per material (`interiorMaterials()`); terrazzo corridor, plaster walls; daylight windows on the outer north wall wherever no board/cabinet/sign (taller than the sill) uses it. |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. Realistic pass: grounds split by colour into pavers/soil/wood/leaves materials, `RingRoad` (smooth ring), `Water` (normal-map ripples drifting; `calm` for the fountain), shared `Forest` trees and `HILL`s from School.tsx, animals drawn with `Soft` (ellipsoids / tapered limbs from box sizes), round rose `BLOOM`s, glass dome with ribs. Module-level code must not create canvas textures (sim runs in Node): make them lazy. |
+| `src/Cafe.tsx`, `src/cafeNpcs.ts`, `src/cafe/models.js` | 잔디광장 카페 (lawn, east): building from the metaverse-cafe kit (copied builders, lights removed), outdoor counter + barista (X Bot), terrace with 3 tables (`CAFE`, `CAFE_SEATS`, `CAFE_MENU` in layout.js; table 2 is the regulars' reserved table). **Server decides** orders / pickup (`readyAt`) / one guest per stool / sips (`cafe:*` events, broadcast `cafe`); clients render seats, cups and the sip lift from that. Regulars 민지·준호·서연 follow a 3-minute routine computed from `serverNow()` only (`npcAt`), so everyone sees the same thing with no traffic; one sits at a time. Context buttons + menu in App.tsx (E key = first button). |
+| `src/ParkDogs.tsx` | Two dogs on the lake trail (grass between the train road and the shore), walk / tail wag / sit from `serverNow()`; they look at and wag at the nearest player within 3.5 m (each client). |
+| `src/labels.ts` | `placeLabel` (DOM tag over an object's world position), shared by players, barista and cafe customers. |
 | `public/signs/` | Sign images designed in Adobe Express (gate name plate, park arch, 105 room nameplates in `rooms/` mapped by name in `src/roomPlates.ts`), shown with `ImageSign` (parts.tsx) with a text-sign fallback. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
 | `src/Human.tsx` | Avatar: rigged mannequin `public/models/xbot.glb` (Mixamo X Bot, meshopt) cloned per player with `SkeletonUtils.clone`, dressed as a student by `outfitMaterial` (shader colours by bind-pose region: skin / shirt = player colour / trousers / shoes, short sleeves) plus hair and eyes on `mixamorigHead` (bone units = cm, head ≈ 13 cm radius; hair/pants/skin from a hash of the player id — use `>>>`, not `>>`, on the hash); idle/walk/run blended by measured speed; sitting pose by bending leg bones while riding. Capsule `Avatar` in World.tsx is the loading fallback. |
@@ -96,6 +99,11 @@ customer NPCs, or ordering / sitting / drinking interactions, load the `metavers
 into `src/` (allowJs). Keep this skill's rules on top: layout/colliders in `shared/layout.js`, shared state
 (seats, orders) decided by the Socket.IO server, chat through the existing scopes, X Bot stays the player avatar.
 
+**Cafe changes** — positions in `CAFE` (layout.js) drive the scene, colliders (`CAFE_COLLIDERS`), the
+server's reach checks and the customers' route (`cafeNpcs.ts` waypoints: re-run `node tests/sim.mjs`, which
+walks the whole routine and checks the reserved table). New menu items: `CAFE_MENU` only. Tests: sim
+(paths, routine), bots (order/pickup/stool/sip rules), e2e section `cafe`.
+
 **HUD text / labels** — `zones.ts` (`campusLabel`, `parkLabel`, `locationAt`).
 
 ## Verify (always, before telling the user it works)
@@ -108,7 +116,7 @@ bash tests/run-all.sh stairs rides    # sim + bots + chosen e2e sections
 MV_URL=https://jerom-world.onrender.com node tests/live.mjs   # against production (no teleport there)
 ```
 
-`tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice`. Also look at screenshots
+`tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice cafe`. Also look at screenshots
 (Playwright `page.screenshot`, phone emulation with `devices['iPhone 13']`) for visual changes —
 layout bugs (overlapping HUD, labels, occlusion) only show up visually.
 

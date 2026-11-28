@@ -23,6 +23,8 @@ await build({
       export { resolveInterior } from "${root}/src/Interior";
       export { resolvePark } from "${root}/src/Park";
       export { findPath } from "${root}/src/pathfind";
+      export { DOG_PATH, DOGS, dogPose } from "${root}/src/ParkDogs";
+      export { NPCS, NPC_CYCLE, npcAt } from "${root}/src/cafeNpcs";
       export * from "${root}/shared/layout.js";`,
     resolveDir: root,
     loader: "ts",
@@ -177,4 +179,46 @@ check(walkPath({ x: E2.cx - 20, z: 0 }, { x: (up.minX + up.maxX) / 2, z: (up.min
 check(walkPath({ x: P, z: 52 }, { x: P + 45, z: -35 }).result === "arrived", "path: park plaza -> zoo walkway");
 const pen = walkPath({ x: P, z: 52 }, { x: P + 28, z: -25 });
 check(pen.result === "arrived" && pen.end.x - P > 34, "path: click inside the giraffe pen stops outside the fence", pen.end && `x=${(pen.end.x - P).toFixed(1)}`);
+// ---------- park dogs and lawn cafe ----------
+{
+  // dogs: the lake trail stays on free ground, off the elephant-train road and out of the water
+  const LOOP = { x: 8, z: 4, rx: 27, rz: 24 };
+  let free = true, road = false;
+  for (let k = 0; k < 400; k++) {
+    const a = (k / 400) * Math.PI * 2;
+    const x = L.DOG_PATH.x + Math.cos(a) * L.DOG_PATH.rx, z = L.DOG_PATH.z + Math.sin(a) * L.DOG_PATH.rz;
+    if (!isFree(P + x, z)) free = false;
+    // distance to the road centre line in units of its half-width (1.7 m at radius ~25)
+    const r = Math.hypot((x - LOOP.x) / LOOP.rx, (z - LOOP.z) / LOOP.rz);
+    if (Math.abs(r - 1) * 25.5 < 1.7 + 0.5) road = true;
+  }
+  check(free && !road, "dogs: lake trail is free ground and clear of the train road");
+  const a = L.dogPose(0, 1e12), b = L.dogPose(0, 1e12);
+  check(a.x === b.x && a.z === b.z && a.state === b.state, "dogs: pose depends only on the server clock");
+}
+{
+  const C = L.CAFE;
+  const spots = [C.order, ...L.CAFE_SEATS.map((_, i) => L.cafeStandSpot(i))];
+  check(spots.every((q) => isFree(P + q.x, q.z)), "cafe: counter spot and every stand-up spot are free");
+  const toCounter = walkPath({ x: P, z: 52 }, { x: P + C.order.x, z: C.order.z });
+  check(toCounter.result === "arrived", "path: park plaza -> cafe counter");
+  const seatsOK = L.CAFE_SEATS.every((st, i) => st.npc || walkPath({ x: P + C.order.x, z: C.order.z }, { x: P + L.cafeStandSpot(i).x, z: L.cafeStandSpot(i).z }).result === "arrived");
+  check(seatsOK, "path: counter -> every guest stool");
+  // customers: every point of their routine is walkable (or their reserved stool), at most one sits at a time
+  let npcFree = true, twoSit = false, seatOK = true;
+  for (let t = 0; t < L.NPC_CYCLE; t += 250) {
+    let sitting = 0;
+    L.NPCS.forEach((_, i) => {
+      const q = L.npcAt(i, 1e12 + t);
+      if (!q.visible) return;
+      if (q.seated) {
+        sitting++;
+        if (!L.CAFE_SEATS[q.seat].npc) seatOK = false;
+      } else if (!isFree(P + q.x, q.z)) npcFree = false;
+    });
+    if (sitting > 1) twoSit = true;
+  }
+  check(npcFree, "cafe customers: walking routine never goes through scenery");
+  check(seatOK && !twoSit, "cafe customers: only the reserved table, one at a time");
+}
 done();

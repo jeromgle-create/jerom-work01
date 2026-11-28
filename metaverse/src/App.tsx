@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, type RideState } from "./net";
-import { RIDES } from "../shared/layout.js";
+import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, cafe, bubbleBus, type CafeState, type RideState } from "./net";
+import { CAFE, CAFE_MENU, CAFE_SEATS, PARK, RIDES } from "../shared/layout.js";
+import { NPCS, npcAt, npcLine } from "./cafeNpcs";
+import { dogPose } from "./ParkDogs";
 import { locationAt } from "./zones";
 import type { ChatMsg, ChatScope, Member, Player } from "./types";
 import { chatReducer, initialChat } from "./chatState";
@@ -13,6 +15,8 @@ import Minimap from "./Minimap";
 type JoinAck = { ok: true; selfId: string; now: number; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
 type VoiceMode = "off" | "joining" | "live" | "muted";
+/** A cafe button shown when it applies (first one also runs with the E key). */
+type CafeAction = { key: string; label: string; run: () => void };
 
 const COLORS = ["#4f8cff", "#ff6b6b", "#ffb84d", "#3ecf8e", "#b57cff", "#ff7ac6", "#2bc4d8", "#8a8f98"];
 const BUBBLE_MS = 5000;
@@ -45,6 +49,10 @@ export default function App() {
   const voice = voiceRef.current;
   const [place, setPlace] = useState("");
   const [panned, setPanned] = useState(false);
+  const [cafeActions, setCafeActions] = useState<CafeAction[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [cafeMsg, setCafeMsg] = useState("");
+  const talkCount = useRef<number[]>(NPCS.map(() => 0));
 
   const doJoin = useCallback(() => {
     const info = joinInfo.current;
@@ -59,11 +67,13 @@ export default function App() {
       }
       remoteTargets.clear();
       rides.clear();
+      cafe.clear();
       clock.offset = ack.now - Date.now();
       const map: Record<string, Player> = {};
       for (const p of ack.players) {
         map[p.id] = p;
         if (p.ride) rides.set(p.id, p.ride);
+        if (p.cafe && (p.cafe.seat !== null || p.cafe.order)) cafe.set(p.id, p.cafe as CafeState);
         if (p.id !== ack.selfId) remoteTargets.set(p.id, { x: p.x, z: p.z, ry: p.ry });
       }
       setSelfId(ack.selfId);
@@ -95,6 +105,7 @@ export default function App() {
     const onLeft = (id: string) => {
       remoteTargets.delete(id);
       rides.delete(id);
+      cafe.delete(id);
       voiceRef.current?.closePeer(id);
       setPlayers((prev) => {
         const next = { ...prev };
@@ -140,6 +151,18 @@ export default function App() {
       else rides.set(r.id, r as RideState);
     };
     socket.on("ride", onRide);
+    // Lawn cafe: who sits where and who ordered what (server-decided).
+    const onCafe = (c: { id: string } & CafeState) => {
+      if (c.seat === null && !c.order) cafe.delete(c.id);
+      else cafe.set(c.id, { seat: c.seat, order: c.order });
+    };
+    socket.on("cafe", onCafe);
+    // Bubbles from the scene (barista, cafe customers).
+    const onSay = (e: Event) => {
+      const d = (e as CustomEvent<{ id: string; text: string; ms: number }>).detail;
+      setBubbles((prev) => ({ ...prev, [d.id]: { text: d.text, until: Date.now() + d.ms } }));
+    };
+    bubbleBus.addEventListener("say", onSay);
     // The server refused a move that was too fast (not walking, not a door): go back to where it has us.
     const onCorrect = (c: { x: number; z: number }) => {
       debugTeleport.pending = { x: c.x, z: c.z };
@@ -150,6 +173,8 @@ export default function App() {
     return () => {
       socket.off("correct", onCorrect);
       socket.off("ride", onRide);
+      socket.off("cafe", onCafe);
+      bubbleBus.removeEventListener("say", onSay);
       socket.off("group:state", onGroup);
       socket.off("voice:state", onVoiceState);
       socket.off("connect", onConnect);
@@ -191,6 +216,78 @@ export default function App() {
 
   const sendChat = (scope: ChatScope, text: string) => socket.emit("chat", { scope, text });
 
+  // ---------- lawn cafe ----------
+  const cafeError = (ack: { ok: boolean; error?: string } | undefined) => {
+    if (ack && !ack.ok && ack.error) {
+      setCafeMsg(ack.error);
+      setTimeout(() => setCafeMsg(""), 3000);
+    }
+  };
+  const order = (item: number) => {
+    setMenuOpen(false);
+    socket.emit("cafe:order", { item }, cafeError);
+  };
+  /** Buttons that apply where the player is now (cheap: runs 4 times a second). */
+  const cafeActionsNow = (): CafeAction[] => {
+    const id = socket.id ?? "";
+    if (rides.has(id) || selfPos.x < PARK.minX) return [];
+    const lx = selfPos.x - PARK.cx, lz = selfPos.z;
+    const me = cafe.get(id);
+    const ord = me?.order ?? null;
+    const now = serverNow();
+    const out: CafeAction[] = [];
+    if (me && me.seat !== null) {
+      if (ord && ord.stage === "placed" && ord.seat === me.seat && ord.left > 0 && ord.sipUntil <= now)
+        out.push({ key: "sip", label: `${CAFE_MENU[ord.item].food ? "🍪 먹기" : "🥤 마시기"} (${ord.left}${CAFE_MENU[ord.item].food ? "입" : "모금"} 남음)`, run: () => socket.emit("cafe:sip", {}, cafeError) });
+      out.push({ key: "stand", label: "🧍 일어나기", run: () => socket.emit("cafe:stand", {}, cafeError) });
+      return out;
+    }
+    if (Math.hypot(lx - CAFE.order.x, lz - CAFE.order.z) <= CAFE.order.reach - 0.2) {
+      if (!ord || ord.stage === "placed") out.push({ key: "order", label: "☕ 주문하기", run: () => setMenuOpen(true) });
+      else if (ord.stage === "making" && now >= ord.readyAt) out.push({ key: "pickup", label: `🥤 ${CAFE_MENU[ord.item].name} 받기`, run: () => socket.emit("cafe:pickup", {}, cafeError) });
+    }
+    // nearest free guest stool within reach
+    let seat = -1, sd = 1.6;
+    CAFE_SEATS.forEach((st, i) => {
+      if (st.npc) return;
+      const d = Math.hypot(lx - st.x, lz - st.z);
+      const taken = [...cafe.values()].some((c) => c.seat === i);
+      if (!taken && d < sd) (sd = d), (seat = i);
+    });
+    if (seat >= 0) out.push({ key: "sit", label: ord?.stage === "held" ? "🪑 앉아서 내려놓기" : "🪑 앉기", run: () => socket.emit("cafe:sit", { seat }, cafeError) });
+    // regular customers close by
+    let npc = -1, nd = 2.5;
+    NPCS.forEach((_, i) => {
+      const p = npcAt(i, now);
+      const d = Math.hypot(lx - p.x, lz - p.z);
+      if (p.visible && d < nd) (nd = d), (npc = i);
+    });
+    if (npc >= 0)
+      out.push({
+        key: `talk${npc}`,
+        label: `💬 ${NPCS[npc].name}에게 말 걸기`,
+        run: () => {
+          const i = npc;
+          setBubbles((prev) => ({ ...prev, [id]: { text: "안녕하세요!", until: Date.now() + 2000 } }));
+          const line = npcLine(i, npcAt(i, serverNow()), talkCount.current[i]++);
+          setTimeout(() => setBubbles((prev) => ({ ...prev, [`npc:${i}`]: { text: line, until: Date.now() + 4000 } })), 600);
+        },
+      });
+    return out;
+  };
+  const actionsRef = useRef(cafeActions);
+  actionsRef.current = cafeActions;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (e.key.toLowerCase() === "e" && !e.repeat) actionsRef.current[0]?.run();
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => () => voiceRef.current?.teardown(), []);
   // Current location for the HUD (e.g. "1층 · 과학실").
   useEffect(() => {
@@ -209,7 +306,17 @@ export default function App() {
           const left = Math.max(0, Math.ceil((mine.start + RIDES[mine.ride].duration - now) / 1000));
           setPlace(`${name} 타는 중${aboard > 1 ? ` · ${aboard}명 함께` : ""} · ${left}초 남음`);
         }
-      } else setPlace(here.label);
+      } else {
+        const ord = cafe.get(socket.id ?? "")?.order;
+        const now = serverNow();
+        let extra = "";
+        if (ord?.stage === "making") {
+          const name = CAFE_MENU[ord.item].name;
+          extra = now < ord.readyAt ? ` · ☕ ${name} 만드는 중 ${Math.ceil((ord.readyAt - now) / 1000)}초` : ` · ☕ ${name} 나왔어요 (카운터에서 받기)`;
+        }
+        setPlace(here.label + extra);
+      }
+      setCafeActions(cafeActionsNow());
       // Hint for the "근처" tab: others within 3m in the same room (the server decides delivery).
       let n = 0;
       for (const p of remoteTargets.values())
@@ -235,6 +342,12 @@ export default function App() {
       pan: () => ({ ...view.pan, dragging: view.dragging }),
       remote: (id: string) => remoteTargets.get(id) ?? null, // where another player is shown
       corrections: () => debugTeleport.corrections, // server snap-backs (should stay 0 for honest walking)
+      cafe: () => Object.fromEntries(cafe), // seats and orders (server-decided)
+      npc: (i: number) => npcAt(i, serverNow()),
+      dog: (i: number) => dogPose(i, serverNow()), // park dogs on the lake trail (park-local)
+      actions: () => actionsRef.current.map((a) => a.key),
+      act: (key: string) => actionsRef.current.find((a) => a.key === key)?.run(),
+      cafeOrder: (item: number) => socket.emit("cafe:order", { item }),
     };
   }, [voice]);
 
@@ -328,7 +441,48 @@ export default function App() {
             </div>
           </div>
         ))}
+        {[["npc:barista", "바리스타"], ...NPCS.map((n, i) => [`npc:${i}`, n.name])].map(([id, nm]) => (
+          <div
+            key={id}
+            className="tag"
+            ref={(el) => {
+              if (el) labelEls.set(id, el);
+              else labelEls.delete(id);
+            }}
+          >
+            {bubbles[id] && <div className="bubble">{bubbles[id].text}</div>}
+            <div className="name npc">{nm}</div>
+          </div>
+        ))}
       </div>
+      {(cafeActions.length > 0 || cafeMsg) && (
+        <div className="cafe-actions" aria-live="polite">
+          {cafeMsg && <p className="cafe-msg">{cafeMsg}</p>}
+          {cafeActions.map((a, i) => (
+            <button key={a.key} type="button" className={i === 0 ? "cafe-btn first" : "cafe-btn"} onClick={a.run} data-action={a.key}>
+              {a.label}
+              {i === 0 && <kbd>E</kbd>}
+            </button>
+          ))}
+        </div>
+      )}
+      {menuOpen && (
+        <div className="cafe-menu" role="dialog" aria-label={`${CAFE.name} 메뉴`}>
+          <h2>{CAFE.name}</h2>
+          <ul>
+            {CAFE_MENU.map((m, i) => (
+              <li key={m.name}>
+                <button type="button" onClick={() => order(i)} data-item={i}>
+                  <span className="dot-c" style={{ background: m.color }} />
+                  {m.name}
+                  <small>{m.prep / 1000}초</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="mini" onClick={() => setMenuOpen(false)}>닫기</button>
+        </div>
+      )}
       <div className="hud-left">
         {place && (
           <div className="hud-place" aria-live="polite">

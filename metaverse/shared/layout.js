@@ -132,6 +132,45 @@ export const PARK_RIDES = [
 ];
 export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 
+// ---------- lawn cafe (잔디광장 카페) ----------
+// A small cafe building on the east side of the lawn, an outdoor counter in front of it (barista
+// behind, customers order on the south side) and a terrace with three tables. The server decides
+// orders and seats; everyone renders from that. Park-local coordinates.
+export const CAFE = {
+  name: "잔디광장 카페",
+  building: { x: 60, z: 33.5, w: 6.8, d: 6.4 },
+  counter: { x: 60, z: 38.2, w: 3.2, d: 0.8, h: 1.05 },
+  barista: { x: 60, z: 37.25 },
+  /** where customers stand to order / pick up (and how close the server wants them) */
+  order: { x: 60, z: 39.4, reach: 2.6 },
+  tables: [
+    { x: 56.5, z: 43 },
+    { x: 63.5, z: 43 },
+    { x: 60, z: 47.5, npc: true }, // reserved for the cafe's regular customers (NPCs)
+  ],
+  stoolTop: 0.46,
+};
+/** Two stools per table (west / east), facing the table. */
+export const CAFE_SEATS = CAFE.tables.flatMap((t, ti) =>
+  [-1, 1].map((side) => ({ table: ti, x: t.x + side * 0.75, z: t.z, ry: side < 0 ? Math.PI / 2 : -Math.PI / 2, npc: !!t.npc })),
+);
+/** Where a guest stands after getting up (a little south of the stool, clear of the table). */
+export const cafeStandSpot = (i) => ({ x: CAFE_SEATS[i].x, z: CAFE_SEATS[i].z + 0.8 });
+/** Where a drink sits on the table in front of seat i. */
+export const cafeTableSpot = (i) => {
+  const s = CAFE_SEATS[i];
+  const t = CAFE.tables[s.table];
+  return { x: t.x + (s.x - t.x) * 0.45, z: t.z };
+};
+/** Menu (no money: it is a school world). prep = ms the barista needs; sips before it is empty. */
+export const CAFE_MENU = [
+  { name: "핫초코", color: "#5b3a29", prep: 4000, sips: 3 },
+  { name: "딸기라떼", color: "#f4a7b9", prep: 4000, sips: 3 },
+  { name: "레모네이드", color: "#f7e27a", prep: 3000, sips: 3 },
+  { name: "아메리카노", color: "#3b2416", prep: 3000, sips: 3 },
+  { name: "초코 쿠키", color: "#6b4026", prep: 2000, sips: 2, food: true },
+];
+
 // ---------- rideable vehicles ----------
 // Every client computes a rider's pose from the same path and the server's start time, so riders
 // are seen in their train car / lift chair (including height) without syncing y.

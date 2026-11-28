@@ -1,7 +1,7 @@
 // Browser end-to-end checks with Playwright (software WebGL). Needs a running server.
 //   MV_URL=http://localhost:4100 node tests/e2e.mjs            # all sections
 //   node tests/e2e.mjs stairs rides                             # only some
-// Sections: sync, stairs, rides, click, pan, zoom, map, voice
+// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe
 // Note: software rendering runs at a few fps, so walking is slow; timeouts are generous.
 import * as L from "../shared/layout.js";
 import { check, done, join, launch, order, pan, place, pos, rides, round, selfId, teleport, touch, walkUntil, zoom } from "./lib.mjs";
@@ -225,6 +225,62 @@ if (on("voice")) {
   const v10 = await vol(-8, 17);
   check(Math.abs(v10 - 0.46) < 0.05, "10 m apart: about half volume", `${v10}`);
   check((await vol(0, 26)) === 0, "20 m apart: silent");
+  await closeAll();
+}
+
+if (on("cafe")) {
+  console.log("\n# cafe: order, pick up, sit, sip, stand (server-decided, seen by others); customers, dogs");
+  const shots = process.env.MV_SHOTS; // folder for screenshots (optional)
+  const a = await open("카페손님");
+  const b = await open("구경꾼");
+  const c = L.CAFE;
+  await teleport(a, P + c.order.x, c.order.z);
+  await teleport(b, P + c.order.x + 2.5, c.order.z + 3);
+  const actions = (p) => p.evaluate(() => window.__mvDebug.actions());
+  await a.waitForFunction(() => window.__mvDebug.actions().includes("order"), null, { timeout: 30000 }).catch(() => {});
+  check((await actions(a)).includes("order"), "cafe: at the counter the order button appears");
+  await a.evaluate(() => window.__mvDebug.act("order"));
+  await a.waitForSelector(".cafe-menu button[data-item='0']", { timeout: 10000 });
+  await a.click(".cafe-menu button[data-item='0']");
+  await a.waitForFunction(() => window.__mvDebug.actions().includes("pickup"), null, { timeout: 30000 }).catch(() => {});
+  check((await actions(a)).includes("pickup"), "cafe: the drink is ready after the barista's time (pickup button)");
+  await a.evaluate(() => window.__mvDebug.act("pickup"));
+  const st = L.cafeStandSpot(0);
+  await a.waitForTimeout(800);
+  await teleport(a, P + st.x, st.z);
+  await a.waitForFunction(() => window.__mvDebug.actions().includes("sit"), null, { timeout: 30000 }).catch(() => {});
+  await a.evaluate(() => window.__mvDebug.act("sit"));
+  const seat = L.CAFE_SEATS[0];
+  await a.waitForFunction(([x, z]) => { const q = window.__mvDebug.pos(); return Math.hypot(q.x - x, q.z - z) < 0.05; }, [P + seat.x, seat.z], { timeout: 20000 }).catch(() => {});
+  const ap = await pos(a);
+  check(Math.hypot(ap.x - (P + seat.x), ap.z - seat.z) < 0.05, "cafe: sitting puts the player on the stool", `${round(ap.x - P)},${round(ap.z)}`);
+  const aId = await selfId(a);
+  await b.waitForFunction((id) => window.__mvDebug.cafe()[id]?.order?.stage === "placed", aId, { timeout: 20000 }).catch(() => {});
+  check((await b.evaluate((id) => window.__mvDebug.cafe()[id], aId))?.order?.stage === "placed", "cafe: the other player sees the drink on the table");
+  await a.evaluate(() => window.__mvDebug.act("sip"));
+  await b.waitForFunction((id) => window.__mvDebug.cafe()[id]?.order?.left === 2, aId, { timeout: 20000 }).catch(() => {});
+  check((await b.evaluate((id) => window.__mvDebug.cafe()[id], aId))?.order?.left === 2, "cafe: a sip is seen by the other player (2 left)");
+  if (shots) {
+    await a.waitForTimeout(700);
+    await a.screenshot({ path: `${shots}/cafe-sip.png` });
+    await b.screenshot({ path: `${shots}/cafe-other.png` });
+  }
+  await a.waitForTimeout(2500);
+  await a.evaluate(() => window.__mvDebug.act("stand"));
+  await a.waitForFunction(([x, z]) => { const q = window.__mvDebug.pos(); return Math.hypot(q.x - x, q.z - z) < 0.1; }, [P + st.x, st.z], { timeout: 20000 }).catch(() => {});
+  const up = await pos(a);
+  check(Math.hypot(up.x - (P + st.x), up.z - st.z) < 0.1, "cafe: standing up steps off beside the stool");
+  check((await a.evaluate(() => window.__mvDebug.corrections())) === 0, "cafe: sitting / standing never triggers a server snap-back");
+  // regular customers: same routine on both pages
+  const na = await a.evaluate(() => window.__mvDebug.npc(0));
+  const nb = await b.evaluate(() => window.__mvDebug.npc(0));
+  check(na.phase === nb.phase && Math.hypot(na.x - nb.x, na.z - nb.z) < 1.5, "cafe customers: both players see 민지 at the same place", `${na.phase}`);
+  if (shots) {
+    // a wider look: the cafe with the barista, and the lake trail
+    await teleport(b, P + 52, 50);
+    await b.waitForTimeout(2500);
+    await b.screenshot({ path: `${shots}/cafe-wide.png` });
+  }
   await closeAll();
 }
 
