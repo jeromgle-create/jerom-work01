@@ -1,6 +1,6 @@
 ---
 name: metaverse-cafe
-description: Three.js(웹)용 로우폴리 메타버스 카페 시제품 키트. 코드로 만든 캐릭터·바리스타·손님(헤어 6종·체형 4종)·강아지·카페 건물 GLB와, 키보드 이동·문 열기·의자 앉기·카운터 주문·앉아서 마시기·손님 NPC·말풍선 대화·캐릭터 꾸미기·실시간 멀티플레이(claude.ai room)가 들어간 단일 HTML 뷰어를 담고 있다. 사용자가 "메타버스", "웹 3D 가상공간", "Three.js 캐릭터/건물/동물", "카페/가게 시뮬레이션", "NPC", "멀티플레이 아바타", "GLB 에셋 만들기", 또는 이 카페 프로젝트를 이어서 수정하자고 할 때 사용한다. 이 저장소의 metaverse/ 폴더(한빛초등학교 메타버스, React Three Fiber + Socket.IO) 작업에는 쓰지 않고 hanbit-metaverse 스킬을 쓴다.
+description: Three.js(웹)용 로우폴리 메타버스 카페 시제품 키트. 코드로 만든 캐릭터·바리스타·손님(헤어 6종·체형 4종)·강아지·카페 건물 GLB와, 키보드 이동·문 열기·의자 앉기·카운터 주문·앉아서 마시기·손님 NPC·말풍선 대화·캐릭터 꾸미기·실시간 멀티플레이(claude.ai room)가 들어간 단일 HTML 뷰어를 담고 있다. 사용자가 "메타버스", "웹 3D 가상공간", "Three.js 캐릭터/건물/동물", "카페/가게 시뮬레이션", "NPC", "멀티플레이 아바타", "GLB 에셋 만들기", 또는 이 카페 프로젝트를 이어서 수정하자고 할 때 사용한다. 한빛초등학교 메타버스(metaverse/, React Three Fiber + Socket.IO)에 카페·강아지·NPC 에셋이나 주문·착석 패턴을 넣을 때도 hanbit-metaverse 스킬과 함께 쓴다.
 ---
 
 # 메타버스 카페 키트 (Three.js)
@@ -72,3 +72,5 @@ new GLTFLoader().load('character.glb', (g) => {
 - 어도브 연동(Adobe for creativity)은 2D 이미지 편집만 제공하며 3D 모델 제작에는 쓸 수 없다.
 
 기능별 상세(조작키, NPC 상태 머신, 주문 흐름, 멀티플레이 presence 형식)는 `references/features.md`를 읽는다.
+
+한빛초 메타버스(`metaverse/`)에 넣을 때는 `references/hanbit-metaverse.md`를 먼저 읽는다. 그 앱의 구조·서버·테스트·배포 규칙은 `hanbit-metaverse` 스킬이 우선한다.

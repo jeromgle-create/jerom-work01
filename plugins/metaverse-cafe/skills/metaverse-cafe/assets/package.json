@@ -1,0 +1,10 @@
+{
+  "name": "metaverse-cafe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "node ../scripts/export_glb.mjs . ../glb",
+    "verify": "node ../scripts/verify_glb.mjs ../glb ."
+  },
+  "dependencies": { "three": "0.160.0" }
+}

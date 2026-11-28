@@ -1,0 +1,13 @@
+{
+  "name": "jerom-skills",
+  "owner": { "name": "jeromgle-create" },
+  "metadata": { "description": "jeromgle-create의 Claude Code 플러그인 모음" },
+  "plugins": [
+    {
+      "name": "metaverse-cafe",
+      "source": "./plugins/metaverse-cafe",
+      "description": "Three.js 로우폴리 메타버스 카페 키트 (에셋·뷰어·스크립트)",
+      "version": "1.0.0"
+    }
+  ]
+}
