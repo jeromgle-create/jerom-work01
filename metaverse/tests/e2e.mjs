@@ -89,18 +89,20 @@ if (on("rides")) {
   const b = await open("승객2");
   const board = async (p, x, z) => {
     await teleport(p, x, z);
-    await p.waitForTimeout(700);
+    // the first frame in the park builds it: wait until we are really there before walking
+    await p.waitForFunction(([x, z]) => Math.hypot(window.__mvDebug.pos().x - x, window.__mvDebug.pos().z - z) < 1, [x, z], { timeout: 30000 });
     await p.mouse.click(550, 220);
     await p.keyboard.down("w");
-    await p.waitForFunction(() => !!window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 10000 });
+    await p.waitForFunction(() => !!window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 30000 });
     await p.keyboard.up("w");
-    return (await rides(p))[await selfId(p)];
+    const r = (await rides(p))[await selfId(p)];
+    return { ...r, hud: await place(p) }; // read the HUD right after boarding, before departure
   };
   // Both walk onto the stop at the same time (boarding one after the other can miss the 8 s wait
   // when software rendering is slow).
   const [ra, rb] = await Promise.all([board(a, P + 12, 56.4), board(b, P + 12.5, 56.4)]);
   check(ra.vehicle === rb.vehicle && ra.start === rb.start && ra.seat !== rb.seat, "same train, same departure, different seats", `${ra.vehicle} seats ${ra.seat}/${rb.seat}`);
-  check((await place(a)).includes("출발까지"), "HUD shows the departure countdown", await place(a));
+  check([ra.hud, rb.hud].some((h) => h.includes("출발까지")), "HUD shows the departure countdown", `${ra.hud} / ${rb.hud}`);
   await a.waitForFunction((s) => Date.now() > s + 4000, ra.start, { timeout: 30000 });
   // Same car = side by side. Positions are read from two pages that render at a few fps, so a
   // moving train puts up to ~1.5 m between the two readings; allow for it.
