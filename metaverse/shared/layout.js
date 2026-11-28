@@ -141,7 +141,8 @@ export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 // orders and seats; everyone renders from that. Park-local coordinates.
 export const CAFE = {
   name: "잔디광장 카페",
-  building: { x: 60, z: 33.5, w: 6.8, d: 6.4 },
+  // the building turned so its door faces west (the lawn); inside is a lounge with two tables
+  building: { x: 60, z: 33.5, w: 6.8, d: 6.4, ry: -Math.PI / 2 },
   counter: { x: 60, z: 38.2, w: 3.2, d: 0.8, h: 1.05 },
   barista: { x: 60, z: 37.25 },
   /** where customers stand to order / pick up (and how close the server wants them) */
@@ -152,27 +153,52 @@ export const CAFE = {
     { x: 60, z: 47.5, npc: true }, // reserved for the cafe's regular customers (NPCs)
   ],
   stoolTop: 0.46,
+  /** pocket money each visitor starts with; "용돈 받기" refills it once it can't buy anything */
+  wallet: 20000,
 };
+
+// The building's inside, in the model's own coordinates (door at +z). It is sunk by `floor` so its
+// floor is level with the lawn. Turned by building.ry: model (lx, lz) → park (x − lz, z + lx).
+export const CAFE_ROOM = { minX: -2.8, maxX: 2.8, minZ: -2.3, maxZ: 2.3, door: { x: 0, z: 2.4 }, floor: -0.33, tables: [[-1.6, 0.5], [1.3, 0.75]] };
+export const cafeRoomToPark = (lx, lz) => ({ x: CAFE.building.x - lz, z: CAFE.building.z + lx });
+export const parkToCafeRoom = (x, z) => ({ x: z - CAFE.building.z, z: CAFE.building.x - x });
+/** Inside the cafe building (world coordinates)? */
+export function inCafeRoom(x, z) {
+  const l = parkToCafeRoom(x - PARK.cx, z - PARK.cz);
+  return l.x > CAFE_ROOM.minX && l.x < CAFE_ROOM.maxX && l.z > CAFE_ROOM.minZ && l.z < CAFE_ROOM.maxZ;
+}
+const LOUNGE_SEATS = CAFE_ROOM.tables.flatMap(([tx, tz], li) =>
+  [0.9, 0.9 + Math.PI].map((a) => {
+    const sx = tx + Math.cos(a) * 0.62;
+    const sz = tz + Math.sin(a) * 0.62;
+    const s = cafeRoomToPark(sx, sz);
+    const t = cafeRoomToPark(tx, tz);
+    const stand = cafeRoomToPark(sx + Math.cos(a) * 0.5, sz + Math.sin(a) * 0.5);
+    return { table: -1, lounge: li, x: s.x, z: s.z, ry: Math.atan2(tx - sx, tz - sz) + CAFE.building.ry, npc: false, tx: t.x, tz: t.z, stand };
+  }),
+);
 /** Two stools per table (west / east), facing the table. */
 export const CAFE_SEATS = CAFE.tables.flatMap((t, ti) =>
   [-1, 1].map((side) => ({ table: ti, x: t.x + side * 0.75, z: t.z, ry: side < 0 ? Math.PI / 2 : -Math.PI / 2, npc: !!t.npc })),
-);
+).concat(LOUNGE_SEATS); // terrace stools first (their indices are fixed), then the 4 indoor stools
 /** Where a guest stands after getting up (a little south of the stool, clear of the table). */
-export const cafeStandSpot = (i) => ({ x: CAFE_SEATS[i].x, z: CAFE_SEATS[i].z + 0.8 });
+export const cafeStandSpot = (i) => CAFE_SEATS[i].stand ?? { x: CAFE_SEATS[i].x, z: CAFE_SEATS[i].z + 0.8 };
 /** Where a drink sits on the table in front of seat i. */
 export const cafeTableSpot = (i) => {
   const s = CAFE_SEATS[i];
+  if (s.tx !== undefined) return { x: s.tx + (s.x - s.tx) * 0.45, z: s.tz + (s.z - s.tz) * 0.45 };
   const t = CAFE.tables[s.table];
   return { x: t.x + (s.x - t.x) * 0.45, z: t.z };
 };
-/** Menu (no money: it is a school world). prep = ms the barista needs; sips before it is empty. */
+/** Menu with play-money prices (CAFE.wallet). prep = ms the barista needs; sips before it is empty. */
 export const CAFE_MENU = [
-  { name: "핫초코", color: "#5b3a29", prep: 4000, sips: 3 },
-  { name: "딸기라떼", color: "#f4a7b9", prep: 4000, sips: 3 },
-  { name: "레모네이드", color: "#f7e27a", prep: 3000, sips: 3 },
-  { name: "아메리카노", color: "#3b2416", prep: 3000, sips: 3 },
-  { name: "초코 쿠키", color: "#6b4026", prep: 2000, sips: 2, food: true },
+  { name: "핫초코", color: "#5b3a29", prep: 4000, sips: 3, price: 3500 },
+  { name: "딸기라떼", color: "#f4a7b9", prep: 4000, sips: 3, price: 4500 },
+  { name: "레모네이드", color: "#f7e27a", prep: 3000, sips: 3, price: 3500 },
+  { name: "아메리카노", color: "#3b2416", prep: 3000, sips: 3, price: 4000 },
+  { name: "초코 쿠키", color: "#6b4026", prep: 2000, sips: 2, food: true, price: 2500 },
 ];
+export const CAFE_MIN_PRICE = Math.min(...CAFE_MENU.map((m) => m.price));
 
 // ---------- rideable vehicles ----------
 // Every client computes a rider's pose from the same path and the server's start time, so riders
@@ -304,7 +330,8 @@ export function roomAt(x, z) {
 /** Conversation space: walls separate rooms; open kinds count as the corridor. */
 export function locationKey(x, z) {
   const id = zoneAt(x);
-  if (id === "outdoor" || id === "park") return id;
+  if (id === "park") return inCafeRoom(x, z) ? "park:cafe" : id; // the cafe's walls keep its talk inside
+  if (id === "outdoor") return id;
   const r = roomAt(x, z);
   return r && !OPEN_KINDS.has(r.kind) ? r.key : `${id}:corridor`;
 }

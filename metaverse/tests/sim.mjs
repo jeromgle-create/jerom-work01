@@ -203,7 +203,10 @@ check(pen.result === "arrived" && pen.end.x - P > 34, "path: click inside the gi
   const toCounter = walkPath({ x: P, z: 52 }, { x: P + C.order.x, z: C.order.z });
   check(toCounter.result === "arrived", "path: park plaza -> cafe counter");
   const seatsOK = L.CAFE_SEATS.every((st, i) => st.npc || walkPath({ x: P + C.order.x, z: C.order.z }, { x: P + L.cafeStandSpot(i).x, z: L.cafeStandSpot(i).z }).result === "arrived");
-  check(seatsOK, "path: counter -> every guest stool");
+  check(seatsOK, "path: counter -> every guest stool (terrace and the 4 indoor ones, through the door)");
+  const W = (lx, lz) => { const q = L.cafeRoomToPark(lx, lz); return [P + q.x, q.z]; };
+  check(!isFree(...W(0, -2.5)) && !isFree(...W(-2, 2.4)) && isFree(...W(0, 2.4)), "cafe: building walls are solid, the doorway is open");
+  check(L.locationKey(...W(0, 0)) === "park:cafe" && L.locationKey(...W(0, 4)) === "park", "cafe: inside the building is its own chat room");
   // customers: every point of their routine is walkable (or their reserved stool), at most one sits at a time
   let npcFree = true, twoSit = false, seatOK = true;
   for (let t = 0; t < L.NPC_CYCLE; t += 250) {

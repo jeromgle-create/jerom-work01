@@ -132,6 +132,40 @@ check(seen.some((c) => c.id === g1.s.id && c.order?.left === L.CAFE_MENU[0].sips
 const up1 = await cafeAsk(g1, "cafe:stand");
 check(up1.ok && Math.abs(up1.z - (L.CAFE_SEATS[0].z + 0.8)) < 1e-6, "cafe: standing up puts the guest beside the stool");
 check((await cafeAsk(g2, "cafe:sit", { seat: 0 })).ok === false, "cafe: sitting needs to be next to the stool");
+
+// pocket money: prices come out of the wallet; when it can't buy anything, "용돈 받기" refills it
+{
+  const s = io(URL, { transports: ["websocket"] });
+  const ack = await new Promise((r) => s.emit("join", { name: "W" }, r));
+  check(ack.wallet === L.CAFE.wallet, "cafe: every visitor starts with 20,000원", `${ack.wallet}`);
+  let wallet = ack.wallet;
+  s.on("cafe:wallet", (w) => (wallet = w));
+  const ask = (ev, m = {}) => new Promise((r) => s.emit(ev, m, r));
+  const cookie = L.CAFE_MENU.findIndex((m) => m.food);
+  const seat = L.CAFE_SEATS.findIndex((q) => q.tx !== undefined); // an indoor stool
+  const st = W(L.CAFE_SEATS[seat]);
+  check(!(await ask("cafe:allowance")).ok, "cafe: no pocket money while there is money left");
+  s.emit("move", { x: counter.x, z: counter.z, ry: 0 });
+  await wait(200);
+  let n = 0;
+  while ((await ask("cafe:order", { item: cookie })).ok) {
+    n++;
+    await wait(L.CAFE_MENU[cookie].prep + 200);
+    await ask("cafe:pickup");
+    s.emit("move", { x: st.x, z: st.z, ry: 0 });
+    await wait(200);
+    await ask("cafe:sit", { seat });
+    await ask("cafe:stand");
+    s.emit("move", { x: counter.x, z: counter.z, ry: 0 });
+    await wait(200);
+    if (n > 20) break;
+  }
+  const price = L.CAFE_MENU[cookie].price;
+  check(n === Math.floor(L.CAFE.wallet / price) && wallet === L.CAFE.wallet - n * price, "cafe: each order takes its price until the money runs out", `${n} cookies, ${wallet}원 left`);
+  const al = await ask("cafe:allowance");
+  check(al.ok && wallet === L.CAFE.wallet && (await ask("cafe:order", { item: cookie })).ok, "cafe: pocket money refills the wallet and ordering works again");
+  s.close();
+}
 bots.forEach((b) => b.s.close());
 done();
 process.exit(process.exitCode ?? 0);

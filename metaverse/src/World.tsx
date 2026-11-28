@@ -7,7 +7,7 @@ import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
-import { CAFE_SEATS, PARK, RIDES, ZONE_RECTS, cafeStandSpot, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE_SEATS, PARK, RIDES, inCafeRoom, ZONE_RECTS, cafeStandSpot, seatEndU, seatPose } from "../shared/layout.js";
 import { CAFE_SEAT_Y } from "./Cafe";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 import Human from "./Human";
@@ -23,8 +23,9 @@ const CAMERA = {
   indoor: { offset: new THREE.Vector3(0, 13, 8), ahead: 1, lookY: 0.5 },
 };
 const COURTYARD_Z = -8.6;
-const camFor = (zone: ZoneId, z = 0) =>
-  zone === "park" ? CAMERA.outdoor : zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
+// In the park cafe's room the steeper indoor view looks over the (hidden) south wall.
+const camFor = (zone: ZoneId, z = 0, x = 0) =>
+  zone === "park" ? (inCafeRoom(x, z) ? CAMERA.indoor : CAMERA.outdoor) : zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
 
 function collide(pos: THREE.Vector3) {
   const zone = zoneAt(pos.x);
@@ -106,7 +107,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     pos.current.set(start.x, 0, start.z);
     zone.current = zoneAt(start.x);
     onZone(zone.current);
-    camera.position.copy(pos.current).add(camFor(zone.current, pos.current.z).offset);
+    camera.position.copy(pos.current).add(camFor(zone.current, pos.current.z, pos.current.x).offset);
   }, [start, camera, onZone]);
 
   useFrame(({ size }, dt) => {
@@ -230,7 +231,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       jumped = true;
     }
     const z = zoneAt(pos.current.x);
-    const cam = camFor(z, pos.current.z);
+    const cam = camFor(z, pos.current.z, pos.current.x);
     if (z !== zone.current || jumped) {
       if (z !== zone.current) onZone(z);
       if (path.current && (z !== zone.current || debugJump)) {

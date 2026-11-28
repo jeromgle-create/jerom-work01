@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { CAFE, CAFE_MENU, CAFE_SEATS, CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, cafeStandSpot, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE, CAFE_MENU, CAFE_MIN_PRICE, CAFE_SEATS, CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, cafeStandSpot, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -125,13 +125,14 @@ io.on("connection", (socket) => {
       ride: null, // { ride, dir, start, vehicle, seat } while sitting in the elephant train or a lift chair
       // lawn cafe: seat index (or null) and order { item, readyAt, stage: "making"|"ready"|"held"|"placed", seat, left, sipUntil }
       cafe: { seat: null, order: null },
+      wallet: CAFE.wallet, // cafe pocket money (only this player is told the amount)
       rideTimer: null,
       budget: MOVE_BURST, // metres the player may still move right now (see MOVE_SPEED)
       lastMoveAt: Date.now(),
       lastCorrect: 0,
     };
     players.set(socket.id, player);
-    ack?.({ ok: true, selfId: socket.id, now: Date.now(), players: [...players.values()].map(publicPlayer) });
+    ack?.({ ok: true, selfId: socket.id, now: Date.now(), wallet: player.wallet, players: [...players.values()].map(publicPlayer) });
     socket.broadcast.emit("playerJoined", publicPlayer(player));
     io.emit("system", { text: `${name} 님이 입장했습니다.`, ts: Date.now() });
   });
@@ -325,11 +326,23 @@ io.on("connection", (socket) => {
     if (!p || !Number.isInteger(item) || !CAFE_MENU[item] || p.ride) return ack?.({ ok: false });
     if (p.cafe.order && p.cafe.order.stage !== "placed") return ack?.({ ok: false, error: "이미 주문한 것이 있어요." });
     if (!near(p, CAFE.order.x, CAFE.order.z, CAFE.order.reach)) return ack?.({ ok: false, error: "카운터 앞에서 주문해 주세요." });
+    const price = CAFE_MENU[item].price;
+    if (p.wallet < price) return ack?.({ ok: false, error: "돈이 모자라요. '용돈 받기'를 눌러 보세요." });
+    p.wallet -= price;
+    socket.emit("cafe:wallet", p.wallet);
     const now = Date.now();
     // An empty cup left on the table is cleared by the next order.
     p.cafe.order = { item, readyAt: now + CAFE_MENU[item].prep, stage: "making", seat: null, left: CAFE_MENU[item].sips, sipUntil: 0 };
     sendCafe(p);
     ack?.({ ok: true });
+  });
+  // Pocket money: only once it can't buy anything any more.
+  socket.on("cafe:allowance", (_m, ack) => {
+    const p = players.get(socket.id);
+    if (!p || p.wallet >= CAFE_MIN_PRICE) return ack?.({ ok: false, error: "아직 돈이 남아 있어요." });
+    p.wallet = CAFE.wallet;
+    socket.emit("cafe:wallet", p.wallet);
+    ack?.({ ok: true, wallet: p.wallet });
   });
   socket.on("cafe:pickup", (_m, ack) => {
     const p = players.get(socket.id);

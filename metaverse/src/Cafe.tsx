@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { buildBuilding } from "./cafe/models.js";
-import { CAFE, CAFE_MENU, CAFE_SEATS, PARK, cafeTableSpot } from "../shared/layout.js";
+import { CAFE, CAFE_MENU, CAFE_ROOM, CAFE_SEATS, PARK, cafeRoomToPark, cafeTableSpot, inCafeRoom, parkToCafeRoom } from "../shared/layout.js";
 import { box, circle, Box, Sign, type Collider } from "./parts";
 import { cafe, labelEls, remoteTargets, sayBubble, selfPos, serverNow, socket } from "./net";
 import { placeLabel } from "./labels";
@@ -17,9 +17,27 @@ import { NPCS, npcAt, type NpcPhase } from "./cafeNpcs";
 export const CAFE_SEAT_Y = 0.06;
 const TABLE_TOP = 0.76;
 
-/** Things guests can't walk through (park-local). The barista's corner is closed off with the counter. */
+/** A box given in the building's own coordinates, as a park-local collider. */
+function roomBox(x0: number, x1: number, z0: number, z1: number): Collider {
+  const a = cafeRoomToPark(x0, z0);
+  const b = cafeRoomToPark(x1, z1);
+  return { kind: "box", minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minZ: Math.min(a.z, b.z), maxZ: Math.max(a.z, b.z) };
+}
+/** Things guests can't walk through (park-local). The barista's corner is closed off with the counter.
+ *  The building has walls with a 1.6 m doorway (players are 0.9 m wide), its inner counter and tables. */
 export const CAFE_COLLIDERS: Collider[] = [
-  box(CAFE.building.x, CAFE.building.z, CAFE.building.w, CAFE.building.d),
+  roomBox(-3.2, 3.2, -2.7, -2.3), // back
+  roomBox(-3.2, -2.8, -2.7, 2.5),
+  roomBox(2.8, 3.2, -2.7, 2.5), // sides
+  roomBox(-3.2, -0.8, 2.3, 2.5),
+  roomBox(0.8, 3.2, 2.3, 2.5), // front, either side of the door
+  roomBox(-0.9, 2.8, -2.3, -0.95), // inner counter (decoration: orders are taken outside)
+  roomBox(-2.65, -1.15, 2.5, 2.85),
+  roomBox(1.15, 2.65, 2.5, 2.85), // window boxes
+  ...CAFE_ROOM.tables.map(([x, z]) => {
+    const p = cafeRoomToPark(x, z);
+    return circle(p.x, p.z, 0.32);
+  }),
   box(CAFE.counter.x, (CAFE.building.z + CAFE.building.d / 2 + CAFE.counter.z + CAFE.counter.d / 2) / 2, CAFE.counter.w + 0.4, CAFE.counter.z + CAFE.counter.d / 2 - (CAFE.building.z + CAFE.building.d / 2)),
   ...CAFE.tables.map((t) => circle(t.x, t.z, 0.5)),
 ];
@@ -66,7 +84,7 @@ function Terrace() {
       out.push({ p: [t.x, TABLE_TOP - 0.025, t.z], s: [0.9, 0.05, 0.9], c: "#f1ece3" });
       out.push({ p: [t.x, (TABLE_TOP - 0.05) / 2, t.z], s: [0.1, TABLE_TOP - 0.05, 0.1], c: "#6c757d" });
     }
-    for (const s of CAFE_SEATS) out.push({ p: [s.x, CAFE.stoolTop / 2, s.z], s: [0.36, CAFE.stoolTop, 0.36], c: s.npc ? "#e09f3e" : "#2e8b6a" });
+    for (const s of CAFE_SEATS.filter((q) => (q as { tx?: number }).tx === undefined)) out.push({ p: [s.x, CAFE.stoolTop / 2, s.z], s: [0.36, CAFE.stoolTop, 0.36], c: s.npc ? "#e09f3e" : "#2e8b6a" });
     // counter with a stone top, coffee machine and a cup stack
     const c = CAFE.counter;
     out.push({ p: [c.x, c.h / 2, c.z], s: [c.w, c.h, c.d], c: "#8b5a33" });
@@ -102,6 +120,9 @@ function Terrace() {
 function Building() {
   const obj = useMemo(() => {
     const b = buildBuilding();
+    // indoor table 1 sits where CAFE_ROOM says (room to walk round it to both stools)
+    for (const n of ["Bld_Table_1", "Bld_TableLeg_1", "Bld_Stool_1_0", "Bld_Stool_1_1"])
+      b.getObjectByName(n)?.position.add(new THREE.Vector3(CAFE_ROOM.tables[1][0] - 1.4, 0, CAFE_ROOM.tables[1][1] - 0.9));
     const lights: THREE.Object3D[] = [];
     b.traverse((o) => {
       if ((o as THREE.Light).isLight) lights.push(o);
@@ -114,7 +135,31 @@ function Building() {
     lights.forEach((l) => l.removeFromParent()); // no extra point light: the park is lit by the sun
     return b;
   }, []);
-  return <primitive object={obj} position={[CAFE.building.x, 0, CAFE.building.z]} />;
+  // Inside, the wall on the camera side (the model's east wall, facing south) and the roof would
+  // hide everyone: take them away while this player is in the room (dollhouse view).
+  const hide = useMemo(() => {
+    const out: THREE.Object3D[] = [];
+    obj.traverse((o) => {
+      if (o.name === "Bld_East" || o.userData.roof) out.push(o);
+    });
+    return out;
+  }, [obj]);
+  const door = useMemo(() => obj.getObjectByName("Bld_DoorPivot")!, [obj]);
+  const open = useRef(0);
+  useFrame((_, dt) => {
+    const inside = inCafeRoom(selfPos.x, selfPos.z);
+    for (const o of hide) o.visible = !inside;
+    // the door opens by itself when someone comes near it (inside or out)
+    const near = (x: number, z: number) => {
+      const l = parkToCafeRoom(x - PARK.cx, z - PARK.cz);
+      return Math.hypot(l.x - CAFE_ROOM.door.x, l.z - CAFE_ROOM.door.z) < 2.4;
+    };
+    let someone = near(selfPos.x, selfPos.z);
+    if (!someone) for (const t of remoteTargets.values()) if (near(t.x, t.z)) someone = true;
+    open.current += ((someone ? 1 : 0) - open.current) * Math.min(1, dt * 4);
+    if (door) door.rotation.y = (obj.userData.doorOpenAngle as number) * open.current;
+  });
+  return <primitive object={obj} position={[CAFE.building.x, CAFE_ROOM.floor, CAFE.building.z]} rotation-y={CAFE.building.ry} />;
 }
 
 /** The barista: faces the guests, turns to the machine while someone's order is being made. */
