@@ -25,6 +25,8 @@ export const debugTeleport: { pending: { x: number; z: number } | null; correcti
 export type RideState = { ride: number; dir: "ab" | "ba"; start: number; vehicle: string; seat: number }; // start: departure, server time (ms)
 /** Active rides by player id (including this player), from the server. */
 export const rides = new Map<string, RideState>();
+/** Cafe stools taken by players (player id → seat id), from the server. */
+export const seats = new Map<string, string>();
 /** Offset to convert local Date.now() into server time; set when joining. */
 export const clock = { offset: 0 };
 export const serverNow = () => Date.now() + clock.offset;

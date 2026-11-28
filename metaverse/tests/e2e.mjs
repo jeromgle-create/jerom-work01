@@ -1,7 +1,7 @@
 // Browser end-to-end checks with Playwright (software WebGL). Needs a running server.
 //   MV_URL=http://localhost:4100 node tests/e2e.mjs            # all sections
 //   node tests/e2e.mjs stairs rides                             # only some
-// Sections: sync, stairs, rides, click, pan, zoom, map, voice
+// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe
 // Note: software rendering runs at a few fps, so walking is slow; timeouts are generous.
 import * as L from "../shared/layout.js";
 import { check, done, join, launch, order, pan, place, pos, rides, round, selfId, teleport, touch, walkUntil, zoom } from "./lib.mjs";
@@ -225,6 +225,48 @@ if (on("voice")) {
   const v10 = await vol(-8, 17);
   check(Math.abs(v10 - 0.46) < 0.05, "10 m apart: about half volume", `${v10}`);
   check((await vol(0, 26)) === 0, "20 m apart: silent");
+  await closeAll();
+}
+
+if (on("cafe")) {
+  console.log("\n# cafe: order at the counter, pick up, sit on a stool, drink (seen by another player)");
+  const CX = P + L.CAFE.x;
+  const CZ = L.CAFE.z;
+  const a = await open("단골");
+  const b = await open("옆자리");
+  const aId = await selfId(a);
+  await teleport(a, CX + 0.6, CZ - 0.3); // in front of the counter
+  await teleport(b, CX - 0.2, CZ + 1.6);
+  const cafe = () => a.evaluate(() => window.__mvDebug.cafe());
+  const btn = (text) => a.locator(".cafe button", { hasText: text });
+  await btn("메뉴 보고 주문하기").click({ timeout: 60000 });
+  await btn("아메리카노").click({ timeout: 30000 });
+  check((await a.textContent("[data-testid=wallet]")).includes("15,500원") && (await cafe()).order?.status === "preparing", "ordering an americano takes 4,500원 from the 20,000원 wallet");
+  await btn("받기").click({ timeout: 60000 });
+  check((await cafe()).order?.status === "held", "the drink is ready on the counter and picked up");
+  const s = L.CAFE_SEATS[0];
+  const [tx, tz] = L.CAFE_TABLES[s.table];
+  const d = Math.hypot(s.x - tx, s.z - tz);
+  await teleport(a, CX + s.x + ((s.x - tx) / d) * 0.5, CZ + s.z + ((s.z - tz) / d) * 0.5);
+  await btn("여기 앉기").click({ timeout: 60000 });
+  await a.waitForFunction((id) => window.__mvDebug.cafe().seat === id, s.id, { timeout: 20000 }).catch(() => {});
+  const c1 = await cafe();
+  check(c1.seat === s.id && c1.order?.status === "placed", "sitting on a stool puts the drink on the table", JSON.stringify(c1));
+  await b.waitForFunction(([id, seat]) => window.__mvDebug.seats()[id] === seat, [aId, s.id], { timeout: 20000 }).catch(() => {});
+  check((await b.evaluate(() => window.__mvDebug.seats()))[aId] === s.id, "the other player sees them sitting on that stool");
+  for (let i = 0; i < 3; i++) {
+    await btn("한 모금").click({ timeout: 30000 });
+    await a.waitForTimeout(2600);
+  }
+  await a.waitForFunction(() => window.__mvDebug.cafe().order === null, null, { timeout: 20000 }).catch(() => {});
+  check((await cafe()).order === null && (await a.textContent(".cafe")).includes("다 마셨어요"), "three sips finish the drink");
+  await a.keyboard.down("s");
+  await a.waitForTimeout(400);
+  await a.keyboard.up("s");
+  await a.waitForFunction(() => window.__mvDebug.cafe().seat === null, null, { timeout: 20000 }).catch(() => {});
+  await b.waitForFunction((id) => !window.__mvDebug.seats()[id], aId, { timeout: 20000 }).catch(() => {});
+  check((await cafe()).seat === null && !(await b.evaluate(() => window.__mvDebug.seats()))[aId], "moving gets up again, for everyone");
+  check(L.inCafe((await pos(a)).x, (await pos(a)).z), "getting up leaves them standing inside the cafe");
   await closeAll();
 }
 

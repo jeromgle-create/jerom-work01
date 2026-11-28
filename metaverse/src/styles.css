@@ -232,3 +232,25 @@ button, input { font: inherit; color: inherit; }
 .chat-form input:disabled, .chat-form button:disabled { opacity: 0.55; cursor: default; }
 .chat-list { height: 130px; }
 }
+
+/* Park cafe: wallet, menu and actions (above the voice button on the right) */
+.cafe {
+  position: absolute; right: 12px; bottom: 76px; z-index: 21; width: min(270px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  backdrop-filter: blur(6px);
+}
+.cafe-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cafe-wallet { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cafe-msg { margin: 0; font-size: 0.9rem; color: var(--muted); }
+.cafe-actions, .cafe-menu { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cafe button {
+  width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--accent); color: var(--accent-text); font-weight: 700; cursor: pointer;
+}
+.cafe-menu button { background: transparent; color: var(--text); font-weight: 600; }
+.cafe-menu button:disabled { opacity: 0.45; cursor: default; }
+.cafe button.cafe-cancel { justify-content: center; background: transparent; color: var(--muted); }
+@media (pointer: coarse) {
+  .cafe { bottom: 214px; width: min(240px, calc(100vw - 24px)); }
+}

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { ZOOM_MAX, ZOOM_MIN, debugTeleport, input, labelEls, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
+import { ZOOM_MAX, ZOOM_MIN, debugTeleport, input, labelEls, moveOrder, remoteTargets, rides, seats, selfPos, serverNow, socket, view, type RideState } from "./net";
 import { findPath } from "./pathfind";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
-import { RIDES, ZONE_RECTS, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE, CAFE_SEATS, PARK, RIDES, ZONE_RECTS, cafeSeatWorld, inCafe, seatEndU, seatPose } from "../shared/layout.js";
+import { cafe, changed } from "./cafe/state";
+import { SEAT_Y, besideSeat } from "./cafe/Cafe";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 import Human from "./Human";
 import { Atmosphere, Sun } from "./Atmosphere";
@@ -21,8 +23,8 @@ const CAMERA = {
   indoor: { offset: new THREE.Vector3(0, 13, 8), ahead: 1, lookY: 0.5 },
 };
 const COURTYARD_Z = -8.6;
-const camFor = (zone: ZoneId, z = 0) =>
-  zone === "park" ? CAMERA.outdoor : zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
+const camFor = (zone: ZoneId, z = 0, x = 0) =>
+  zone === "park" ? (inCafe(x, z) ? CAMERA.indoor : CAMERA.outdoor) : zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
 
 function collide(pos: THREE.Vector3) {
   const zone = zoneAt(pos.x);
@@ -116,7 +118,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     pos.current.set(start.x, 0, start.z);
     zone.current = zoneAt(start.x);
     onZone(zone.current);
-    camera.position.copy(pos.current).add(camFor(zone.current, pos.current.z).offset);
+    camera.position.copy(pos.current).add(camFor(zone.current, pos.current.z, pos.current.x).offset);
   }, [start, camera, onZone]);
 
   useFrame(({ size }, dt) => {
@@ -163,7 +165,40 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       }
     }
     const len = Math.hypot(mx, mz);
-    if (riding.current && "pending" in riding.current) {
+    // Cafe stool: the panel asks to sit; moving (keys, joystick, a click) gets up again.
+    if (cafe.req.sit && !riding.current && !cafe.seat) {
+      const id = cafe.req.sit;
+      cafe.req.sit = null;
+      socket.emit("sit", { seat: id }, (ack: { ok: boolean }) => {
+        if (!ack?.ok) {
+          cafe.msg = "그 자리는 지금 앉을 수 없어요.";
+          changed();
+          return;
+        }
+        cafe.seat = id;
+        cafe.msg = "자리에 앉았어요. 움직이면 일어납니다.";
+        changed();
+      });
+    }
+    if (cafe.seat && (len > 0.05 || cafe.req.stand)) {
+      const off = besideSeat(cafe.seat);
+      pos.current.set(PARK.cx + CAFE.x + off.x, 0, PARK.cz + CAFE.z + off.z);
+      collide(pos.current);
+      cafe.seat = null;
+      cafe.req.stand = false;
+      cafe.msg = "";
+      socket.emit("sit", { seat: null });
+      lastSent.current.t = 0;
+      changed();
+    } else if (cafe.seat) {
+      const s = cafeSeatWorld(CAFE_SEATS.find((q) => q.id === cafe.seat));
+      pos.current.set(s.x, SEAT_Y, s.z);
+      ry.current = s.ry;
+    }
+    cafe.req.stand = false;
+    if (cafe.seat) {
+      // sitting: nothing else moves the player
+    } else if (riding.current && "pending" in riding.current) {
       // Waiting for the server to assign a vehicle and seat (one round trip).
     } else if (riding.current) {
       // Seated: the vehicle waits for friends, then carries everyone; movement keys do nothing until arrival.
@@ -224,7 +259,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       jumped = true;
     }
     const z = zoneAt(pos.current.x);
-    const cam = camFor(z, pos.current.z);
+    const cam = camFor(z, pos.current.z, pos.current.x);
     if (z !== zone.current || jumped) {
       if (z !== zone.current) onZone(z);
       if (path.current && (z !== zone.current || debugJump)) {
@@ -283,7 +318,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
 
   return (
     <group ref={group}>
-      <Person id={start.id} color={start.color} riding={() => !!riding.current} />
+      <Person id={start.id} color={start.color} riding={() => !!riding.current || !!cafe.seat} />
     </group>
   );
 }
@@ -468,7 +503,7 @@ function RemotePlayer({ player }: { player: Player }) {
       placeLabel(player.id, g, camera, size.width, size.height);
       return;
     }
-    g.position.y = 0;
+    g.position.y = seats.has(player.id) ? SEAT_Y : 0; // sitting on a cafe stool
     const a = Math.min(1, dt * 10);
     if (Math.hypot(t.x - g.position.x, t.z - g.position.z) > 8) {
       g.position.set(t.x, 0, t.z); // went through a door or stairs: snap instead of gliding across the map
@@ -482,7 +517,7 @@ function RemotePlayer({ player }: { player: Player }) {
   });
   return (
     <group ref={group}>
-      <Person id={player.id} color={player.color} riding={() => rides.has(player.id)} />
+      <Person id={player.id} color={player.color} riding={() => rides.has(player.id) || seats.has(player.id)} />
     </group>
   );
 }

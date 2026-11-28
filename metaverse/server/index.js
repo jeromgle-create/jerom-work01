@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE_SEATS, CAR_GAP, PARK, PARK_RIDES, cafeSeatWorld, PORTALS, RIDES, SPAWN, ZONE_RECTS, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -91,7 +91,7 @@ const clean = (s, max) =>
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim()
     .slice(0, max);
-const publicPlayer = ({ id, name, color, x, z, ry, voice, muted, ride }) => ({ id, name, color, x, z, ry, voice, muted, ride: ride ?? null });
+const publicPlayer = ({ id, name, color, x, z, ry, voice, muted, ride, seat }) => ({ id, name, color, x, z, ry, voice, muted, ride: ride ?? null, seat: seat ?? null });
 const voiceState = (p) => ({ id: p.id, voice: p.voice, muted: p.muted });
 
 io.on("connection", (socket) => {
@@ -163,6 +163,14 @@ io.on("connection", (socket) => {
     p.z = c.z;
     p.ry = num(m?.ry, p.ry);
     dirty.add(socket.id);
+    if (p.seat) {
+      // walked away from the stool (e.g. a lost "stand up" message): no longer sitting
+      const w = cafeSeatWorld(CAFE_SEATS.find((q) => q.id === p.seat));
+      if (Math.hypot(w.x - p.x, w.z - p.z) > 1.5) {
+        p.seat = null;
+        io.emit("sit", { id: p.id, seat: null });
+      }
+    }
   });
 
   socket.on("chat", (m) => {
@@ -302,6 +310,31 @@ io.on("connection", (socket) => {
   socket.on("ride:end", () => {
     const p = players.get(socket.id);
     if (p) endRide(p);
+  });
+
+  // Cafe stools: one sitter each, only from right beside it. Everyone sees who sits where.
+  socket.on("sit", (m, ack) => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const id = typeof m?.seat === "string" ? m.seat : null;
+    if (id === null) {
+      if (p.seat) {
+        p.seat = null;
+        io.emit("sit", { id: p.id, seat: null });
+      }
+      ack?.({ ok: true });
+      return;
+    }
+    const s = CAFE_SEATS.find((q) => q.id === id);
+    const taken = [...players.values()].some((o) => o !== p && o.seat === id);
+    const w = s && cafeSeatWorld(s);
+    if (!s || taken || p.ride || Math.hypot(w.x - p.x, w.z - p.z) > 2) {
+      ack?.({ ok: false });
+      return;
+    }
+    p.seat = id;
+    io.emit("sit", { id: p.id, seat: id });
+    ack?.({ ok: true });
   });
 
   socket.on("disconnect", () => {

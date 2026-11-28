@@ -175,6 +175,20 @@ check(walkPath({ x: E2.cx - 20, z: 0 }, room(E2, "교장실")).result === "arriv
 const up = L.PORTALS.find((p) => p.from === "E2" && p.kind === "up");
 check(walkPath({ x: E2.cx - 20, z: 0 }, { x: (up.minX + up.maxX) / 2, z: (up.minZ + up.maxZ) / 2 }).portal?.kind === "up", "path: clicking the stairs mat goes upstairs");
 check(walkPath({ x: P, z: 52 }, { x: P + 45, z: -35 }).result === "arrived", "path: park plaza -> zoo walkway");
+// park cafe: walk in through the door, reach the counter and every stool
+const CX = P + L.CAFE.x;
+const CZ = L.CAFE.z;
+const beside = L.CAFE_SEATS.map((s) => {
+  const [tx, tz] = L.CAFE_TABLES[s.table];
+  const d = Math.hypot(s.x - tx, s.z - tz);
+  return { id: s.id, x: CX + s.x + ((s.x - tx) / d) * 0.5, z: CZ + s.z + ((s.z - tz) / d) * 0.5 };
+});
+const nearCell = (x, z) => park.some(([cx, cz]) => Math.hypot(cx - x, cz - z) < 0.35);
+check(nearCell(CX + 0.6, CZ - 0.4) && beside.every((b) => nearCell(b.x, b.z)), "cafe: counter and all 4 stools reachable on foot", beside.filter((b) => !nearCell(b.x, b.z)).map((b) => b.id).join(","));
+check(walkPath({ x: P, z: 52 }, { x: CX + 0.6, z: CZ - 0.4 }).result === "arrived", "path: park plaza -> cafe counter through the door");
+check(walkPath({ x: CX, z: CZ - 5 }, { x: CX + 0.6, z: CZ - 0.4 }).result === "arrived", "path: from behind the cafe -> counter walks around to the door");
+check(!isFree(CX, CZ - 2.5) && !isFree(CX - 2, CZ + 2.4) && isFree(CX, CZ + 2.4), "cafe: walls are solid, the doorway is open");
+check(L.locationKey(CX, CZ) === "park:cafe" && L.locationKey(CX, CZ + 4) === "park", "cafe: inside is its own chat room");
 const pen = walkPath({ x: P, z: 52 }, { x: P + 28, z: -25 });
 check(pen.result === "arrived" && pen.end.x - P > 34, "path: click inside the giraffe pen stops outside the fence", pen.end && `x=${(pen.end.x - P).toFixed(1)}`);
 done();

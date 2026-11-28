@@ -135,6 +135,30 @@ export const PARK_RIDES = [
 ];
 export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 
+// ---------- park cafe (on the lawn; building from the user's "메타버스 에셋 스튜디오") ----------
+// Park-local centre; the front wall with the door faces +z (towards the camera). The door's x sits
+// on the park's path-finding grid (0.75 m from PARK.minX) so click-to-move can walk in.
+export const CAFE = { x: 59.75, z: 28, w: 6.4, d: 5.4, name: "카페 쉼터" };
+/** Walkable inside of the cafe (cafe-local), used for "inside" checks and the chat room. */
+export const CAFE_INSIDE = { minX: -2.8, maxX: 2.8, minZ: -2.3, maxZ: 2.3 };
+// table 1 sits 0.1 m left / 0.15 m back of the model's spot so you can walk round it to both stools
+export const CAFE_TABLES = [[-1.6, 0.5], [1.3, 0.75]];
+/** Stools (cafe-local), each facing its table. */
+export const CAFE_SEATS = CAFE_TABLES.flatMap(([tx, tz], t) =>
+  [0.9, 0.9 + Math.PI].map((a, k) => {
+    const x = tx + Math.cos(a) * 0.62;
+    const z = tz + Math.sin(a) * 0.62;
+    return { id: `t${t}s${k}`, table: t, x, z, ry: Math.atan2(tx - x, tz - z) };
+  }),
+);
+/** World position of a cafe seat. */
+export const cafeSeatWorld = (s) => ({ x: PARK.cx + CAFE.x + s.x, z: PARK.cz + CAFE.z + s.z, ry: s.ry });
+export function inCafe(x, z) {
+  const lx = x - PARK.cx - CAFE.x;
+  const lz = z - PARK.cz - CAFE.z;
+  return lx > CAFE_INSIDE.minX && lx < CAFE_INSIDE.maxX && lz > CAFE_INSIDE.minZ && lz < CAFE_INSIDE.maxZ;
+}
+
 // ---------- rideable vehicles ----------
 // Every client computes a rider's pose from the same path and the server's start time, so riders
 // are seen in their train car / lift chair (including height) without syncing y.
@@ -265,7 +289,8 @@ export function roomAt(x, z) {
 /** Conversation space: walls separate rooms; open kinds count as the corridor. */
 export function locationKey(x, z) {
   const id = zoneAt(x);
-  if (id === "outdoor" || id === "park") return id;
+  if (id === "park") return inCafe(x, z) ? "park:cafe" : id; // the cafe's walls keep its talk inside
+  if (id === "outdoor") return id;
   const r = roomAt(x, z);
   return r && !OPEN_KINDS.has(r.kind) ? r.key : `${id}:corridor`;
 }

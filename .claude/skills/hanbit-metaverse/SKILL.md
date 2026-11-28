@@ -26,6 +26,7 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). Realistic pass: items carry `m` (`grain` for colours in `WOODS`, `planks`/`vinyl` from `k.floor`), rendered per material (`interiorMaterials()`); terrazzo corridor, plaster walls; daylight windows on the outer north wall wherever no board/cabinet/sign (taller than the sill) uses it. |
 | `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. Realistic pass: grounds split by colour into pavers/soil/wood/leaves materials, `RingRoad` (smooth ring), `Water` (normal-map ripples drifting; `calm` for the fountain), shared `Forest` trees and `HILL`s from School.tsx, animals drawn with `Soft` (ellipsoids / tapered limbs from box sizes), round rose `BLOOM`s, glass dome with ribs. Module-level code must not create canvas textures (sim runs in Node): make them lazy. |
 | `public/signs/` | Sign images designed in Adobe Express (gate name plate, park arch, 105 room nameplates in `rooms/` mapped by name in `src/roomPlates.ts`), shown with `ImageSign` (parts.tsx) with a text-sign fallback. |
+| `src/cafe/` | Park cafe "카페 쉼터" on the lawn. `models.js` = the user's artifact ("메타버스 에셋 스튜디오") code, copied verbatim: `buildBuilding` (cafe 6.4×5.4 m, facade groups, `Bld_DoorPivot`, counter, 2 tables, 4 stools, pendant light), `buildAnimal` (skinned dog, clips Walk/TailWag/Sit), `buildCharacter` (box people; unused — people use `Human`). `Cafe.tsx`: building sunk `FLOOR = -0.33` so its floor is the lawn, front + roof hidden while you are inside, auto door, barista + 2 regulars (`Human`, scripted waypoints, yield a stool to players), dog, your cup (counter → hand → table → sip), `Proximity` (counter / free stool → `cafe.near`), `cafeColliders()` (door gap 1.6 m on the park path grid: `CAFE.x` = 59.75). `state.ts`: wallet/menu/order store (`useCafe`, `changed`). `CafePanel.tsx`: DOM buttons. Data in `shared/layout.js`: `CAFE`, `CAFE_TABLES`, `CAFE_SEATS`, `cafeSeatWorld`, `inCafe` (also `locationKey` → `park:cafe`). Server `sit` event: one sitter per stool, within 2 m, cleared when walking >1.5 m away; `publicPlayer.seat`; client `seats` map (net.ts) → remote sitting pose at `SEAT_Y`. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
 | `src/Human.tsx` | Avatar: rigged mannequin `public/models/xbot.glb` (Mixamo X Bot, meshopt) cloned per player with `SkeletonUtils.clone`, dressed as a student by `outfitMaterial` (shader colours by bind-pose region: skin / shirt = player colour / trousers / shoes, short sleeves) plus hair and eyes on `mixamorigHead` (bone units = cm, head ≈ 13 cm radius; hair/pants/skin from a hash of the player id — use `>>>`, not `>>`, on the hash); idle/walk/run blended by measured speed; sitting pose by bending leg bones while riding. Capsule `Avatar` in World.tsx is the loading fallback. |
 | `src/parts.tsx` | Box/BoxInstances/Sign meshes, 2D colliders + `pushOut`. |
@@ -98,6 +99,12 @@ poses and rig scales differ (it rendered upside down/huge) — give it its own c
 properly. Only GitHub raw and npm are reachable from the cloud session for downloading assets.
 Look at screenshots: standing, walking, a classroom, the lift (seated), and a phone.
 
+**Park cafe** — move it with `CAFE` in `shared/layout.js` (keep `CAFE.x + 70` a multiple of 0.75 so the
+door lines up with the park path grid; the sim checks counter + stools are reachable). New menu items:
+`MENU` in `src/cafe/state.ts`. Another shop from an artifact: copy its three.js builder into `src/`
+(no CDN imports), sink it so its floor is at y = 0, add colliders with a door gap ≥ 1.6 m
+(`PLAYER_R` is 0.45), hide the camera-side wall and roof while inside, and test with `sim` + a browser run.
+
 **HUD text / labels** — `zones.ts` (`campusLabel`, `parkLabel`, `locationAt`).
 
 ## Verify (always, before telling the user it works)
@@ -110,7 +117,7 @@ bash tests/run-all.sh stairs rides    # sim + bots + chosen e2e sections
 MV_URL=https://jerom-world.onrender.com node tests/live.mjs   # against production (no teleport there)
 ```
 
-`tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice`. Also look at screenshots
+`tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice cafe`. Also look at screenshots
 (Playwright `page.screenshot`, phone emulation with `devices['iPhone 13']`) for visual changes —
 layout bugs (overlapping HUD, labels, occlusion) only show up visually.
 

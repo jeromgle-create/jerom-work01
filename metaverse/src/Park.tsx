@@ -12,6 +12,7 @@ import { PARK, PARK_EXIT_MAT, PARK_RIDES } from "./zones";
 import { CAR_GAP, LIFT_LEFT, LIFT_LEN, LIFT_LINE, RIDES, liftCableY, ridePose } from "../shared/layout.js";
 import type { RideState } from "./net";
 import { rides, serverNow } from "./net";
+import Cafe, { cafeColliders } from "./cafe/Cafe";
 
 type Item = { p: V3; s: V3; c: string };
 type Rect = [number, number, number, number]; // minX, maxX, minZ, maxZ
@@ -82,6 +83,7 @@ const LOCAL_COLLIDERS: Collider[] = [
   circle(-6, 46, 0.6),
   circle(6, 46, 0.6), // entrance arch pillars
   ...TREES.map(([x, z]) => circle(x, z, 0.5)),
+  ...cafeColliders(),
 ];
 const WORLD_COLLIDERS: Collider[] = LOCAL_COLLIDERS.map((c) =>
   c.kind === "box" ? { ...c, minX: c.minX + PARK.cx, maxX: c.maxX + PARK.cx } : { ...c, x: c.x + PARK.cx },
@@ -813,6 +815,7 @@ export default function Park({ dark }: { dark: boolean }) {
       <SkyLift />
       <SwanBoats />
       <Signs />
+      <Cafe />
     </group>
   );
 }

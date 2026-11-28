@@ -6,7 +6,7 @@ import { remoteTargets, selfPos } from "./net";
 import { CAMPUS_DOORS, FLOOR_BY_ID, FLOORS, OUTDOOR, PARK, PARK_GATE_MAT, PORTALS, SCHOOL_NAME, zoneAt, type Floor } from "./zones";
 import { CONNECTOR, FIELD, GATE, GYM, KINDER, MAIN, NORTH_WING, PODIUM, SOUTH_WING, STANDS_E, STANDS_N } from "./School";
 import { FOUNTAIN, GREENHOUSE, LAKE, LOOP, PENS, TENTS } from "./Park";
-import { LIFT_LINE } from "../shared/layout.js";
+import { CAFE, LIFT_LINE } from "../shared/layout.js";
 import type { Player } from "./types";
 
 type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -127,6 +127,7 @@ function drawPark(c: Ctx, t: Tx, big: boolean) {
     c.fillRect(t.x(P + x) - 1.6 * t.s, t.z(z) - 1.6 * t.s, 3.2 * t.s, 3.2 * t.s);
   }
   rect(c, t, rr(P + 29, P + 67, 24, 58), "#b5e48c");
+  rect(c, t, rr(P + CAFE.x - CAFE.w / 2, P + CAFE.x + CAFE.w / 2, CAFE.z - CAFE.d / 2, CAFE.z + CAFE.d / 2), "#e9dcc4", "#b4493a");
   // sky lift
   c.strokeStyle = "#333";
   c.lineWidth = 1;
@@ -143,7 +144,8 @@ function drawPark(c: Ctx, t: Tx, big: boolean) {
   label(c, t, P - 48, -3, "장미원", f);
   label(c, t, P - 48, -40, "식물원", f);
   label(c, t, P - 50, 40, "캠핑장", f);
-  label(c, t, P + 48, 41, "잔디광장", f);
+  label(c, t, P + 44, 42, "잔디광장", f);
+  label(c, t, P + CAFE.x, CAFE.z + (big ? 4.5 : 5), "카페", f);
   label(c, t, P, 52, "정문", f);
   if (big) for (const pen of PENS) label(c, t, P + (pen.rect[0] + pen.rect[1]) / 2, (pen.rect[2] + pen.rect[3]) / 2, pen.name, 10);
 }

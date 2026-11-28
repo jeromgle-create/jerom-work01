@@ -30,7 +30,9 @@ export const {
 
 /** Areas of the park for the HUD label (park-local coordinates). */
 function parkLabel(x: number, z: number) {
+  if (L.inCafe(x, z)) return `${L.CAFE.name} (카페 안)`;
   const lx = x - PARK.cx;
+  if (Math.abs(lx - L.CAFE.x) < 6 && Math.abs(z - L.CAFE.z) < 6) return `${L.CAFE.name} 앞`;
   for (const r of PARK_RIDES)
     for (const st of [r.a, r.b]) {
       const [x0, x1, z0, z1] = st.mat;

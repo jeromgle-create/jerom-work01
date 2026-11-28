@@ -89,6 +89,28 @@ const [c1, c2, c3] = [await bot("C1", top.x, top.z), await bot("C2", top.x + 0.5
 await wait(300);
 const [l1, l2, l3] = [await ask(c1, { ride: 1, dir: "ba" }), await ask(c2, { ride: 1, dir: "ba" }), await ask(c3, { ride: 1, dir: "ba" })];
 check(l1.vehicle === l2.vehicle && l3.ok && l3.vehicle !== l1.vehicle, "ride: lift chairs seat two; the third rider gets the next chair");
+
+// ---------- cafe stools ----------
+const seat = L.CAFE_SEATS[0];
+const sw = L.cafeSeatWorld(seat);
+const sitAsk = (b, s) => new Promise((r) => b.s.emit("sit", { seat: s }, r));
+const [K1, K2] = [await bot("K1", sw.x + 0.3, sw.z), await bot("K2", sw.x - 0.3, sw.z)];
+const K3 = await bot("K3", sw.x + 8, sw.z + 8);
+const seen = [];
+K3.s.on("sit", (m) => seen.push(`${m.id === K1.s.id ? "K1" : "?"}:${m.seat}`));
+await wait(300);
+check(!(await sitAsk(K3, seat.id)).ok, "cafe: sitting is refused far from the stool");
+check(!(await sitAsk(K1, "nope")).ok, "cafe: unknown stool refused");
+check((await sitAsk(K1, seat.id)).ok && !(await sitAsk(K2, seat.id)).ok, "cafe: one sitter per stool (the second is refused)");
+await wait(300);
+check(seen.includes(`K1:${seat.id}`), "cafe: everyone is told who sits where");
+const fresh = io(URL, { transports: ["websocket"] });
+const ack = await new Promise((r) => fresh.emit("join", { name: "K5" }, r));
+check(ack.players.find((p) => p.id === K1.s.id)?.seat === seat.id, "cafe: someone joining later sees who is sitting");
+fresh.close();
+move(K1, sw.x + 3, sw.z + 3); // walked off without saying so
+await wait(400);
+check(seen.includes("K1:null") && (await sitAsk(K2, seat.id)).ok, "cafe: walking away frees the stool for the next person");
 bots.forEach((b) => b.s.close());
 done();
 process.exit(process.exitCode ?? 0);

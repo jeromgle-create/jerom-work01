@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, type RideState } from "./net";
+import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, seats, clock, serverNow, view, moveOrder, type RideState } from "./net";
 import { RIDES } from "../shared/layout.js";
 import { locationAt } from "./zones";
 import type { ChatMsg, ChatScope, Member, Player } from "./types";
@@ -9,6 +9,8 @@ import Chat from "./Chat";
 import Joystick from "./Joystick";
 import { VoiceChat } from "./voice";
 import Minimap from "./Minimap";
+import CafePanel from "./cafe/CafePanel";
+import { cafe } from "./cafe/state";
 
 type JoinAck = { ok: true; selfId: string; now: number; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
@@ -59,11 +61,13 @@ export default function App() {
       }
       remoteTargets.clear();
       rides.clear();
+      seats.clear();
       clock.offset = ack.now - Date.now();
       const map: Record<string, Player> = {};
       for (const p of ack.players) {
         map[p.id] = p;
         if (p.ride) rides.set(p.id, p.ride);
+        if (p.seat && p.id !== ack.selfId) seats.set(p.id, p.seat);
         if (p.id !== ack.selfId) remoteTargets.set(p.id, { x: p.x, z: p.z, ry: p.ry });
       }
       setSelfId(ack.selfId);
@@ -95,6 +99,7 @@ export default function App() {
     const onLeft = (id: string) => {
       remoteTargets.delete(id);
       rides.delete(id);
+      seats.delete(id);
       voiceRef.current?.closePeer(id);
       setPlayers((prev) => {
         const next = { ...prev };
@@ -140,6 +145,12 @@ export default function App() {
       else rides.set(r.id, r as RideState);
     };
     socket.on("ride", onRide);
+    const onSit = (s: { id: string; seat: string | null }) => {
+      if (s.id === socket.id) return; // this player's own stool is tracked by the cafe state
+      if (s.seat) seats.set(s.id, s.seat);
+      else seats.delete(s.id);
+    };
+    socket.on("sit", onSit);
     // The server refused a move that was too fast (not walking, not a door): go back to where it has us.
     const onCorrect = (c: { x: number; z: number }) => {
       debugTeleport.pending = { x: c.x, z: c.z };
@@ -150,6 +161,7 @@ export default function App() {
     return () => {
       socket.off("correct", onCorrect);
       socket.off("ride", onRide);
+      socket.off("sit", onSit);
       socket.off("group:state", onGroup);
       socket.off("voice:state", onVoiceState);
       socket.off("connect", onConnect);
@@ -235,6 +247,8 @@ export default function App() {
       pan: () => ({ ...view.pan, dragging: view.dragging }),
       remote: (id: string) => remoteTargets.get(id) ?? null, // where another player is shown
       corrections: () => debugTeleport.corrections, // server snap-backs (should stay 0 for honest walking)
+      cafe: () => ({ wallet: cafe.wallet, order: cafe.order && { item: cafe.order.item.id, status: cafe.order.status, left: cafe.order.left }, near: cafe.near, seat: cafe.seat }),
+      seats: () => Object.fromEntries(seats), // other players on cafe stools
     };
   }, [voice]);
 
@@ -366,6 +380,7 @@ export default function App() {
           </ul>
         </details>
       </div>
+      <CafePanel />
       <Chat chat={chat} selfId={selfId} nearCount={nearCount} onSend={sendChat} />
       <div className="voice">
         {voiceError && (
