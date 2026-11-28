@@ -89,6 +89,12 @@ poses and rig scales differ (it rendered upside down/huge) — give it its own c
 properly. Only GitHub raw and npm are reachable from the cloud session for downloading assets.
 Look at screenshots: standing, walking, a classroom, the lift (seated), and a phone.
 
+**Cafe, dog, NPC assets (metaverse-cafe kit)** — for a park cafe/kiosk, a dog or other pet, barista or
+customer NPCs, or ordering / sitting / drinking interactions, load the `metaverse-cafe` skill and read its
+`references/hanbit-metaverse.md`. Its builders (`models.js`) run on this app's three 0.187 and can be copied
+into `src/` (allowJs). Keep this skill's rules on top: layout/colliders in `shared/layout.js`, shared state
+(seats, orders) decided by the Socket.IO server, chat through the existing scopes, X Bot stays the player avatar.
+
 **HUD text / labels** — `zones.ts` (`campusLabel`, `parkLabel`, `locationAt`).
 
 ## Verify (always, before telling the user it works)
