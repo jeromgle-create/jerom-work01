@@ -18,6 +18,14 @@
 | 바리스타·손님(`buildBarista`, `customer_*.glb`) | **NPC 전용.** 플레이어 아바타는 X Bot(`Human.tsx`)을 유지 |
 | 주문·착석·마시기·NPC 상태 머신 | `references/features.md`의 흐름을 참고해 다시 구현 |
 
+## 한빛초에 이미 들어간 것 (2026-11)
+
+- **잔디광장 카페** (`src/Cafe.tsx`, `src/cafeNpcs.ts`, `src/cafe/models.js`): 키트 건물을 90° 돌려 문이 잔디밭(서쪽)을 보게 세움, 바깥 카운터+바리스타, 테라스 3테이블, 단골손님 3명(서버 시계 일정).
+  - 주문·받기·의자·모금은 **서버가 결정**(`cafe:*` 이벤트). 지갑 20,000원과 메뉴 가격, 돈이 떨어지면 `cafe:allowance`(용돈 받기)도 서버가 관리.
+  - 건물 실내 라운지: 바닥을 땅높이로 낮추고(`CAFE_ROOM.floor`) 벽 충돌체에 1.6 m 문틈, 다가가면 `Bld_DoorPivot`이 저절로 열림, 안에서는 카메라 쪽 벽(`Bld_East`)·지붕을 숨기고 실내 카메라. 실내 의자 4개는 `CAFE_SEATS` 뒤에 붙임.
+  - 마시는 동작: 키트의 `Drink` 클립 대신 X Bot 오른팔 뼈를 굽힘(`src/hands.ts`의 `ARM`: 들기 / 탁자 / 입). 컵은 손 위치(`hands`)를 따라감.
+- **공원 강아지** (`src/ParkDogs.tsx`): 호수 둘레길을 걷고 앉고 꼬리 흔듦.
+
 ## 넣는 방법
 
 1. **빌더로 쓰기(권장, 파일 추가 없음):** `models.js`를 `metaverse/src/cafe/models.js`로 복사하고 컴포넌트에서 인스턴스마다 새로 만든다.

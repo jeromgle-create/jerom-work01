@@ -184,3 +184,15 @@ visible to real users — mention it if someone was online.
   be allowed in the `move` handler (`throughPortal`, the ride branch, `MOVE_SPEED`) or players get
   pulled back — add a case to `tests/speed.mjs`.
 - Real school plan PDFs are not committed — only room names/order go into `layout.js`.
+- **Other Claude sessions work on this repo too** (the lawn cafe #27 came from one). Before merging,
+  `git fetch origin master` and look at what landed; never stack a second version of a feature on top.
+  If your branch must drop its own commits, a force-push is refused here: build the wanted tree on
+  `origin/master`, then `git merge -s ours origin/<branch>` so the push is a fast-forward.
+- Software WebGL in tests runs at well under 1 fps once the park is busy (zoomed in: ~7 s per
+  screenshot), so short animations (a 2.2 s sip) can't be caught live: add test-build-only hooks that
+  freeze the state (`__mvSip`, `__mvArmForce`) and screenshot those. Timing checks (ride HUD
+  countdown) can miss for the same reason; rerun before treating them as real failures.
+- One `PointLight` makes every material in the zone costlier (it halved test fps): use emissive
+  bulbs instead of real lamp lights.
+- Bone poses on the X Bot: add rotations after `mixer.update` (clips overwrite bones each frame) and
+  tune the angles on side-view screenshots, one axis at a time.

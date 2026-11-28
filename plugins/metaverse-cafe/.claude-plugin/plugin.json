@@ -1,6 +1,6 @@
 {
   "name": "metaverse-cafe",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Three.js 로우폴리 메타버스 카페 키트: 캐릭터·바리스타·손님·강아지·건물 GLB, 플레이 뷰어(주문·착석·마시기·NPC·대화·멀티플레이), 내보내기·검증·자세 조정 스크립트",
   "author": { "name": "jeromgle-create" },
   "repository": "https://github.com/jeromgle-create/jerom-work01",
