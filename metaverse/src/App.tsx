@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, cafe, bubbleBus, type CafeState, type RideState } from "./net";
 import { CAFE, CAFE_MENU, CAFE_SEATS, PARK, RIDES } from "../shared/layout.js";
 import { NPCS, npcAt, npcLine } from "./cafeNpcs";
+import { dogPose } from "./ParkDogs";
 import { locationAt } from "./zones";
 import type { ChatMsg, ChatScope, Member, Player } from "./types";
 import { chatReducer, initialChat } from "./chatState";
@@ -343,6 +344,7 @@ export default function App() {
       corrections: () => debugTeleport.corrections, // server snap-backs (should stay 0 for honest walking)
       cafe: () => Object.fromEntries(cafe), // seats and orders (server-decided)
       npc: (i: number) => npcAt(i, serverNow()),
+      dog: (i: number) => dogPose(i, serverNow()), // park dogs on the lake trail (park-local)
       actions: () => actionsRef.current.map((a) => a.key),
       act: (key: string) => actionsRef.current.find((a) => a.key === key)?.run(),
       cafeOrder: (item: number) => socket.emit("cafe:order", { item }),

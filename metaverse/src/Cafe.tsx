@@ -93,7 +93,7 @@ function Terrace() {
           </mesh>
         </group>
       ))}
-      <Sign p={[CAFE.counter.x, 2.25, CAFE.counter.z + CAFE.counter.d / 2 + 0.02]} size={[2.6, 0.5]} text={`${CAFE.name} · 주문은 여기서`} bg="#2e8b6a" fg="#ffffff" />
+      <Sign p={[CAFE.counter.x, 0.6, CAFE.counter.z + CAFE.counter.d / 2 + 0.02]} size={[2.8, 0.5]} text={`${CAFE.name} · 주문은 여기서`} bg="#2e8b6a" fg="#ffffff" />
       <Sign p={[CAFE.tables[2].x, 1.05, CAFE.tables[2].z - 0.46]} size={[0.8, 0.22]} text="예약석" bg="#fff3b0" fg="#7a4b00" />
     </>
   );
