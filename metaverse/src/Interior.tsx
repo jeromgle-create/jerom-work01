@@ -2,7 +2,8 @@
 // its kind, sized to the room. Dollhouse view: no ceilings, the camera-side outer wall is low.
 import { useMemo } from "react";
 import * as THREE from "three";
-import { BoxInstances, Sign, pushOut, type Collider, type V3 } from "./parts";
+import { BoxInstances, ImageSign, Sign, pushOut, type Collider, type V3 } from "./parts";
+import { ROOM_PLATES } from "./roomPlates";
 import { materials, worldMapped } from "./look";
 import { CORRIDOR_HALF, FLOOR_BY_ID, OPEN_KINDS, PORTALS, ROOM_D, SCHOOL_NAME, exitDoor, type Floor, type Room } from "./zones";
 
@@ -13,7 +14,7 @@ const WALL_T = 0.2;
 /** `m` picks the surface: wooden furniture grain, floor boards, vinyl tiles; default painted / plastic. */
 type Mat = "grain" | "planks" | "vinyl";
 type Item = { p: V3; s: V3; c: string; m?: Mat };
-type SignDef = { p: V3; size: [number, number]; text: string; bg: string; fg: string };
+type SignDef = { p: V3; size: [number, number]; text: string; bg: string; fg: string; plate?: string };
 type Built = { items: Item[]; signs: SignDef[]; solids: Collider[] };
 
 // ---------- doors ----------
@@ -494,7 +495,7 @@ function buildFloor(f: Floor): Built & { segs: Seg[] } {
     // nameplate above the door / opening, readable from the corridor
     const g = OPEN_KINDS.has(r.kind) ? { minX: r.minX, maxX: r.maxX } : doorGap(r);
     const z = r.row === "north" ? -CORRIDOR_HALF + 0.18 : CORRIDOR_HALF - 0.18;
-    out.signs.push({ p: [(g.minX + g.maxX) / 2, WALL_H + 0.35, z], size: [Math.min(3.2, Math.max(2, r.name.length * 0.28)), 0.5], text: r.name, bg: "#ffffff", fg: "#1f3f6e" });
+    out.signs.push({ p: [(g.minX + g.maxX) / 2, WALL_H + 0.35, z], size: [Math.min(3.2, Math.max(2, r.name.length * 0.28)), 0.5], text: r.name, bg: "#ffffff", fg: "#1f3f6e", plate: ROOM_PLATES[r.name] });
   }
   // stairs pads and signs (floor-local), from the shared portal list
   for (const p of PORTALS.filter((q) => q.from === f.id)) {
@@ -618,9 +619,14 @@ export default function Interior({ zone, dark }: { zone: string; dark: boolean }
       <BoxInstances items={walls} material={M.plaster} />
       <BoxInstances items={windows.glass} material={dark ? M.nightGlass : M.dayGlass} shadow={false} />
       <BoxInstances items={windows.frames} material={M.frame} shadow={false} />
-      {data.signs.map((s, i) => (
-        <Sign key={i} p={s.p} size={s.size} text={s.text} bg={s.bg} fg={s.fg} />
-      ))}
+      {data.signs.map((s, i) =>
+        s.plate ? (
+          // room nameplate designed in Adobe Express (public/signs/rooms); text sign while it loads
+          <ImageSign key={i} url={`/signs/rooms/${s.plate}`} p={[s.p[0], s.p[1] + 0.05, s.p[2]]} size={[2.75, 0.59]} fallback={s} />
+        ) : (
+          <Sign key={i} p={s.p} size={s.size} text={s.text} bg={s.bg} fg={s.fg} />
+        ),
+      )}
     </group>
   );
 }
