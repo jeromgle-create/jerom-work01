@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { Server } from "socket.io";
-import { CAFE, CAFE_MENU, CAFE_MIN_PRICE, CAFE_SEATS, CAR_GAP, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, cafeStandSpot, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
+import { CAFE, CAFE_MENU, CAFE_MIN_PRICE, CAFE_SEATS, carGap, PARK, PARK_RIDES, PORTALS, RIDES, SPAWN, ZONE_RECTS, cafeStandSpot, locationKey, seatCar, seatEndU, seatPose } from "../shared/layout.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 50;
@@ -276,7 +276,7 @@ io.on("connection", (socket) => {
   socket.on("ride:start", (m, ack) => {
     const p = players.get(socket.id);
     const ride = m?.ride;
-    const dir = m?.dir === "ba" ? "ba" : "ab";
+    const dir = m?.dir === "ba" && !PARK_RIDES[m?.ride]?.loop ? "ba" : "ab"; // round trips only go one way
     if (!p || !Number.isInteger(ride) || !RIDES[ride] || p.ride || p.cafe.seat !== null) return ack?.({ ok: false });
     // must be standing at the boarding station
     const st = dir === "ab" ? PARK_RIDES[ride].a : PARK_RIDES[ride].b;
@@ -307,7 +307,7 @@ io.on("connection", (socket) => {
     v.seats[seat] = p.id;
     p.ride = { ride, dir, start: v.start, vehicle: vid, seat };
     // safety net if the client never reports arrival
-    const endAt = v.start + spec.duration * (1 + seatCar(ride, seat) * CAR_GAP) + 1500;
+    const endAt = v.start + spec.duration * (1 + seatCar(ride, seat) * carGap(ride)) + 1500;
     p.rideTimer = setTimeout(() => endRide(p), endAt - now);
     io.emit("ride", { id: p.id, ...p.ride });
     ack?.({ ok: true, ...p.ride });

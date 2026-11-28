@@ -9,7 +9,7 @@ import { Box, BoxInstances, ImageSign, Sign, box, circle, pushOut, type Collider
 import { materials, worldMapped } from "./look";
 import { Forest, HILL } from "./School";
 import { PARK, PARK_EXIT_MAT, PARK_RIDES } from "./zones";
-import { CAR_GAP, LIFT_LEFT, LIFT_LEN, LIFT_LINE, RIDES, liftCableY, ridePose } from "../shared/layout.js";
+import { LIFT_LEFT, LIFT_LEN, LIFT_LINE, RIDES, carGap, liftCableY, ridePose } from "../shared/layout.js";
 import type { RideState } from "./net";
 import { rides, serverNow } from "./net";
 import Cafe, { CAFE_COLLIDERS } from "./Cafe";
@@ -208,40 +208,6 @@ function PenAnimals({ pen }: { pen: Pen }) {
 }
 
 // ---------- moving rides ----------
-function ElephantTrain() {
-  const cars = useRef<(THREE.Group | null)[]>([]);
-  useFrame(({ clock }) => {
-    const t = clock.elapsedTime * 0.09;
-    cars.current.forEach((g, i) => {
-      if (!g) return;
-      const a = t - i * 0.075;
-      const x = LOOP.x + Math.cos(a) * LOOP.rx;
-      const z = LOOP.z + Math.sin(a) * LOOP.rz;
-      g.position.set(x, 0, z);
-      g.rotation.y = -a; // tangent of the ellipse (approx.)
-    });
-  });
-  const colors = ["#8d99ae", "#e76f51", "#2a9d8f", "#e9c46a"];
-  return (
-    <>
-      {colors.map((c, i) => (
-        <group key={i} ref={(el) => (cars.current[i] = el)}>
-          <Box p={[0, 0.7, 0]} s={[1.6, 1, 2.6]} c={c} />
-          <Box p={[0, 1.7, 0]} s={[1.7, 0.12, 2.7]} c="#ffffff" />
-          {[-0.65, 0.65].flatMap((x) => [-0.9, 0.9].map((z) => <Box key={`${x}${z}`} p={[x, 1.2, z]} s={[0.08, 1, 0.08]} c="#ffffff" />))}
-          {i === 0 && (
-            <>
-              <Box p={[0, 1.1, 1.6]} s={[1.2, 1.2, 0.6]} c="#8d99ae" />
-              <Box p={[0, 0.5, 2]} s={[0.25, 0.9, 0.25]} c="#7d8597" />
-              <Box p={[-0.75, 1.2, 1.5]} s={[0.1, 0.8, 0.7]} c="#a3aab8" />
-              <Box p={[0.75, 1.2, 1.5]} s={[0.1, 0.8, 0.7]} c="#a3aab8" />
-            </>
-          )}
-        </group>
-      ))}
-    </>
-  );
-}
 
 /** A point on the chairlift's cable loop at distance `s` (metres) from station a's boarding point. */
 const LOOP_R = LIFT_LINE.side;
@@ -437,21 +403,40 @@ function SwanBoats() {
     boats.current.forEach((g, i) => {
       if (!g) return;
       const a = clock.elapsedTime * 0.05 * (i % 2 ? -1 : 1) + i * 2;
-      const r = LAKE.r * (0.45 + 0.15 * i);
+      const r = i ? LAKE.r * 0.82 : LAKE.r * 0.38; // inside and outside the ride boats' circle (layout BOAT_R)
       g.position.set(LAKE.x + Math.cos(a) * r, 0.05 + Math.sin(clock.elapsedTime * 2 + i) * 0.04, LAKE.z + Math.sin(a) * r);
       g.rotation.y = -a + (i % 2 ? 0 : Math.PI);
     });
   });
   return (
     <>
-      {[0, 1, 2].map((i) => (
+      {[0, 1].map((i) => (
         <group key={i} ref={(el) => (boats.current[i] = el)}>
-          <Box p={[0, 0.25, 0]} s={[1.2, 0.5, 1.8]} c="#ffffff" />
-          <Box p={[0, 0.9, 0.75]} s={[0.25, 0.9, 0.25]} c="#ffffff" />
-          <Box p={[0, 1.3, 0.95]} s={[0.25, 0.25, 0.4]} c="#ffffff" />
-          <Box p={[0, 1.3, 1.2]} s={[0.12, 0.1, 0.15]} c="#f4a261" />
+          <SwanBoat />
         </group>
       ))}
+    </>
+  );
+}
+
+/** A swan pedal boat (front = +z), two seats side by side. */
+function SwanBoat() {
+  return (
+    <>
+      <Box p={[0, 0.25, 0]} s={[1.2, 0.5, 1.8]} c="#ffffff" />
+      <Box p={[0, 0.9, 0.75]} s={[0.25, 0.9, 0.25]} c="#ffffff" />
+      <Box p={[0, 1.3, 0.95]} s={[0.25, 0.25, 0.4]} c="#ffffff" />
+      <Box p={[0, 1.3, 1.2]} s={[0.12, 0.1, 0.15]} c="#f4a261" />
+      <Box p={[0, 0.65, -0.75]} s={[1.2, 0.5, 0.15]} c="#f1f1f1" />
+    </>
+  );
+}
+/** Wooden pier for the swan boats on the south shore, out to where the boats wait. */
+function BoatDock() {
+  return (
+    <>
+      <Box p={[8, 0.14, 19.6]} s={[2.4, 0.12, 2.8]} c="#a47148" />
+      {[-1.1, 1.1].flatMap((x) => [18.4, 20.8].map((z) => <Box key={`${x}${z}`} p={[8 + x, 0.4, z]} s={[0.12, 0.6, 0.12]} c="#7a4b2a" />))}
     </>
   );
 }
@@ -485,23 +470,40 @@ function TrainCar({ head, color }: { head: boolean; color: string }) {
 export function RideVehicles() {
   const trains = useRef<(THREE.Group | null)[][]>(Array.from({ length: POOL }, () => []));
   const chairs = useRef<(THREE.Group | null)[]>([]);
+  const boats = useRef<(THREE.Group | null)[]>([]);
   useFrame(() => {
     let ti = 0;
     let ci = 0;
+    let bi = 0;
     const now = serverNow();
     // one vehicle per vehicle id, however many friends sit in it
     const byVehicle = new Map<string, RideState>();
     for (const r of rides.values()) if (!byVehicle.has(r.vehicle)) byVehicle.set(r.vehicle, r);
-    for (const r of byVehicle.values()) {
+    const list: { ride: number; dir: "ab" | "ba"; start: number }[] = [...byVehicle.values()];
+    // Round trips always have a vehicle waiting at the stop: the one people get into (it leaves with
+    // them, and the next one is ready).
+    RIDES.forEach((spec, ride) => {
+      if (spec.parked && !list.some((r) => r.ride === ride && r.start > now)) list.push({ ride, dir: "ab", start: Infinity });
+    });
+    for (const r of list) {
       const spec = RIDES[r.ride];
+      const gap = carGap(r.ride);
       const raw = (now - r.start) / spec.duration;
       const u = Math.max(0, raw); // waits at the station until departure
-      if (raw >= 1 + 3 * CAR_GAP) continue;
-      if (spec.vehicle === "train" && ti < POOL) {
+      if (raw >= 1 + 3 * gap) continue;
+      if (spec.vehicle === "boat" && bi < POOL) {
+        const g = boats.current[bi++];
+        const p = ridePose(r.ride, r.dir, u);
+        if (g) {
+          g.visible = true;
+          g.position.set(p.x - PARK.cx, 0.05 + Math.sin(now / 400 + bi) * 0.03, p.z - PARK.cz);
+          g.rotation.y = p.ry;
+        }
+      } else if (spec.vehicle === "train" && ti < POOL) {
         trains.current[ti].forEach((g, k) => {
           if (!g) return;
-          const p = ridePose(r.ride, r.dir, u - k * CAR_GAP);
-          g.visible = u - k * CAR_GAP < 1;
+          const p = ridePose(r.ride, r.dir, u - k * gap);
+          g.visible = u - k * gap < 1;
           g.position.set(p.x - PARK.cx, 0, p.z - PARK.cz);
           g.rotation.y = p.ry;
         });
@@ -523,6 +525,10 @@ export function RideVehicles() {
       const g = chairs.current[ci];
       if (g) g.visible = false;
     }
+    for (; bi < POOL; bi++) {
+      const g = boats.current[bi];
+      if (g) g.visible = false;
+    }
   });
   return (
     <group position={[PARK.cx, 0, PARK.cz]}>
@@ -536,6 +542,11 @@ export function RideVehicles() {
       {Array.from({ length: POOL }, (_, i) => (
         <group key={`c${i}`} visible={false} ref={(el) => (chairs.current[i] = el)}>
           <Chair color="#ffb703" />
+        </group>
+      ))}
+      {Array.from({ length: POOL }, (_, i) => (
+        <group key={`b${i}`} visible={false} ref={(el) => (boats.current[i] = el)}>
+          <SwanBoat />
         </group>
       ))}
     </group>
@@ -812,7 +823,7 @@ export default function Park({ dark }: { dark: boolean }) {
       {PENS.map((p) => (
         <PenAnimals key={p.name} pen={p} />
       ))}
-      <ElephantTrain />
+      <BoatDock />
       <SkyLift />
       <SwanBoats />
       <Cafe />

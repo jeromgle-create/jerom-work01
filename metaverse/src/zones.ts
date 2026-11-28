@@ -35,7 +35,7 @@ function parkLabel(x: number, z: number) {
   for (const r of PARK_RIDES)
     for (const st of [r.a, r.b]) {
       const [x0, x1, z0, z1] = st.mat;
-      if (lx > x0 - 3 && lx < x1 + 3 && z > z0 - 3 && z < z1 + 4) return `${r.name} ${r.name === "스카이리프트" ? "탑승장" : "정류장"}`;
+      if (lx > x0 - 3 && lx < x1 + 3 && z > z0 - 3 && z < z1 + 4) return `${r.name} ${"stop" in r && r.stop ? r.stop : r.name === "스카이리프트" ? "탑승장" : "정류장"}`;
     }
   if (lx < -26 && z < -24) return "식물원 · 전시온실";
   if (lx < -26 && z < 20) return "테마가든 · 장미원";
