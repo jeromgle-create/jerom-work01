@@ -1,49 +1,22 @@
-import { useRef, useState } from "react";
-import { input } from "./net";
+// Floating thumb joystick for phones: it appears wherever a thumb touches the lower part of the
+// screen (left or right hand) and follows it until the thumb lifts. The scene's pointer handler
+// (World.tsx ClickToMove) drives it through `joyUi`; this only draws it. Before the first use a faint
+// hint shows where to touch.
+import { useEffect, useState } from "react";
+import { JOY_ZONE, joyUi, onJoyUi } from "./net";
 
-const RADIUS = 48;
-
-/** Touch/pointer joystick; writes a -1..1 vector to input.joy (x: right, y: down/back). */
 export default function Joystick() {
-  const base = useRef<HTMLDivElement>(null);
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
-  const active = useRef<number | null>(null);
-
-  const update = (clientX: number, clientY: number) => {
-    const r = base.current!.getBoundingClientRect();
-    let dx = clientX - (r.left + r.width / 2);
-    let dy = clientY - (r.top + r.height / 2);
-    const d = Math.hypot(dx, dy);
-    if (d > RADIUS) {
-      dx = (dx / d) * RADIUS;
-      dy = (dy / d) * RADIUS;
-    }
-    setKnob({ x: dx, y: dy });
-    input.joy.x = dx / RADIUS;
-    input.joy.y = dy / RADIUS;
-  };
-  const end = () => {
-    active.current = null;
-    setKnob({ x: 0, y: 0 });
-    input.joy.x = 0;
-    input.joy.y = 0;
-  };
-
+  const [, redraw] = useState(0);
+  useEffect(() => onJoyUi(() => redraw((n) => n + 1)), []);
+  if (!joyUi.active)
+    return joyUi.used ? null : (
+      <div className="joy-hint" style={{ height: `${JOY_ZONE * 100}%` }} aria-hidden>
+        <span>👍 화면 아래쪽 아무 데나 엄지로 누르고 밀면 이동</span>
+      </div>
+    );
   return (
-    <div
-      ref={base}
-      className="joystick"
-      onPointerDown={(e) => {
-        active.current = e.pointerId;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        update(e.clientX, e.clientY);
-      }}
-      onPointerMove={(e) => active.current === e.pointerId && update(e.clientX, e.clientY)}
-      onPointerUp={end}
-      onPointerCancel={end}
-      aria-hidden
-    >
-      <div className="knob" style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
+    <div className="joystick on" style={{ left: joyUi.x, top: joyUi.y }} aria-hidden>
+      <div className="knob" style={{ transform: `translate(${joyUi.kx}px, ${joyUi.ky}px)` }} />
     </div>
   );
 }

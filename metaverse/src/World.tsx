@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { PITCH_MAX, PITCH_MIN, ZOOM_MAX, ZOOM_MIN, viewPad, cafe, debugTeleport, input, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
+import { JOY_RADIUS, JOY_ZONE, PITCH_MAX, PITCH_MIN, ZOOM_MAX, ZOOM_MIN, joyChanged, joyUi, viewPad, cafe, debugTeleport, input, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
 import { findPath } from "./pathfind";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
@@ -346,13 +346,48 @@ function ClickToMove() {
   useEffect(() => {
     const down = new Map<number, { x: number; y: number; t: number }>();
     let multi = false;
+    // Floating joystick: the touch that started it, and where (its centre).
+    let joyId: number | null = null;
+    const joyEnd = () => {
+      joyId = null;
+      input.joy.x = input.joy.y = 0;
+      joyUi.active = false;
+      joyUi.kx = joyUi.ky = 0;
+      joyChanged();
+    };
     const onDown = (e: PointerEvent) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
       // e.timeStamp is when the touch happened, not when this handler ran (busy frames delay handlers)
       down.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
       if (down.size > 1) multi = true;
+      const r = el.getBoundingClientRect();
+      if (e.pointerType !== "mouse" && joyId === null && down.size === 1 && e.clientY > r.top + r.height * (1 - JOY_ZONE)) {
+        joyId = e.pointerId;
+        el.setPointerCapture?.(e.pointerId); // keep the thumb even when it slides over a button
+        Object.assign(joyUi, { active: true, x: e.clientX, y: e.clientY, kx: 0, ky: 0, used: true });
+        joyChanged();
+      }
+    };
+    const onJoyMove = (e: PointerEvent) => {
+      if (e.pointerId !== joyId) return false;
+      let dx = e.clientX - joyUi.x;
+      let dy = e.clientY - joyUi.y;
+      const d = Math.hypot(dx, dy);
+      if (d > JOY_RADIUS) {
+        dx = (dx / d) * JOY_RADIUS;
+        dy = (dy / d) * JOY_RADIUS;
+      }
+      // a small dead zone so a tap doesn't nudge the player
+      const k = d < 8 ? 0 : 1;
+      input.joy.x = (dx / JOY_RADIUS) * k;
+      input.joy.y = (dy / JOY_RADIUS) * k;
+      joyUi.kx = dx;
+      joyUi.ky = dy;
+      joyChanged();
+      return true;
     };
     const onUp = (e: PointerEvent) => {
+      if (e.pointerId === joyId) joyEnd(); // a quick tap still walks there (below)
       const d = down.get(e.pointerId);
       down.delete(e.pointerId);
       const wasMulti = multi;
@@ -370,6 +405,7 @@ function ClickToMove() {
       moveOrder.active = true;
     };
     const onCancel = (e: PointerEvent) => {
+      if (e.pointerId === joyId) joyEnd();
       down.delete(e.pointerId);
       if (down.size === 0) multi = false;
       if (down.size === 0) view.dragging = false;
@@ -385,6 +421,7 @@ function ClickToMove() {
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
     const onMove = (e: PointerEvent) => {
+      if (onJoyMove(e)) return; // the joystick thumb never pans the view
       const d = down.get(e.pointerId);
       if (!d || multi || down.size !== 1) return;
       if (!view.dragging && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 10) return;
@@ -457,7 +494,7 @@ function ZoomControls() {
     let startZoom = 1;
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
+      if (e.touches.length === 2 && !joyUi.active) { // a second finger while steering is not a pinch
         startDist = dist(e.touches);
         startZoom = view.zoom;
       }

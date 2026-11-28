@@ -1,7 +1,7 @@
 // Browser end-to-end checks with Playwright (software WebGL). Needs a running server.
 //   MV_URL=http://localhost:4100 node tests/e2e.mjs            # all sections
 //   node tests/e2e.mjs stairs rides                             # only some
-// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe, viewpad, loops
+// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe, viewpad, loops, joystick
 // Note: software rendering runs at a few fps, so walking is slow; timeouts are generous.
 import * as L from "../shared/layout.js";
 import { check, done, join, launch, order, pan, place, pos, rides, round, selfId, teleport, touch, walkUntil, zoom } from "./lib.mjs";
@@ -170,7 +170,7 @@ if (on("pan") || on("zoom")) {
   await m.waitForTimeout(1500);
   const t = await touch(m);
   const seq = (await order(m)).seq;
-  await t.drag(195, 450, 195, 250);
+  await t.drag(195, 380, 195, 180); // above the thumb-joystick area (lower 40 %)
   await m.waitForTimeout(700);
   const p1 = await pan(m);
   check(Math.abs(p1.z) > 3 && (await order(m)).seq === seq, "one-finger drag pans the camera (no move order)", `pan z ${round(p1.z)}`);
@@ -315,6 +315,34 @@ if (on("loops")) {
     check(r?.ride === i && Math.hypot(p.x - (P + land[0]), p.z - land[1]) < 2.5, `${name}: board, go round, step off at the same stop`, `${hud} → ${(p.x - P).toFixed(1)},${p.z.toFixed(1)}`);
   }
   check((await a.evaluate(() => window.__mvDebug.corrections())) === 0, "round trips: the server never pulled the rider back");
+  await closeAll();
+}
+
+if (on("joystick")) {
+  console.log("\n# phone thumb joystick: appears where the thumb touches the lower screen, left or right");
+  const m = await open("엄지", { device: "iPhone 13" });
+  await teleport(m, -17, 20);
+  await m.waitForTimeout(2000);
+  const t = await touch(m);
+  const vh = m.viewportSize().height;
+  check(!!(await m.$(".joy-hint")) && !(await m.$(".joystick")), "before the first touch: a hint, no fixed joystick");
+  for (const [side, x] of [["left", 80], ["right", 310]]) {
+    const p0 = await pos(m);
+    const y = vh - 110;
+    const seen = t.hold(x, y, x, y - 45, 1500); // thumb pushed up (screen-forward)
+    // a busy software-rendered page takes a moment to get the touch: wait for the joystick to show
+    await m.waitForFunction(() => window.__mvDebug.joy().active && window.__mvDebug.joy().el, null, { timeout: 15000 }).catch(() => {});
+    const box = await m.$eval(".joystick", (e) => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }).catch(() => null);
+    await seen;
+    await m.waitForTimeout(600);
+    const p1 = await pos(m);
+    check(box && Math.abs(box.x - x) < 6 && Math.abs(box.y - y) < 6 && p1.z < p0.z - 0.5, `${side} thumb: the joystick appears under it and walks forward`, `${JSON.stringify(box)} dz ${round(p1.z - p0.z)}`);
+  }
+  check(!(await m.$(".joystick")), "lifting the thumb hides the joystick");
+  const before = await order(m);
+  await t.tap(200, vh - 120); // a quick tap in the joystick area still walks there
+  await m.waitForTimeout(400);
+  check((await order(m)).seq === before.seq + 1, "a quick tap in the lower area is still tap-to-move");
   await closeAll();
 }
 

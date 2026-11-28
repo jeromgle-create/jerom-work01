@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, cafe, bubbleBus, type CafeState, type RideState } from "./net";
+import { joyUi, socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, cafe, bubbleBus, type CafeState, type RideState } from "./net";
 import { CAFE, CAFE_MENU, CAFE_MIN_PRICE, CAFE_SEATS, PARK, RIDES } from "../shared/layout.js";
 import { NPCS, npcAt, npcLine } from "./cafeNpcs";
 import { dogPose } from "./ParkDogs";
@@ -344,6 +344,7 @@ export default function App() {
       pos: () => ({ ...selfPos }),
       rides: () => Object.fromEntries(rides),
       zoom: () => view.zoom,
+      joy: () => ({ ...joyUi, el: !!document.querySelector(".joystick") }), // floating thumb joystick
       view: () => ({ yaw: view.yaw, pitch: view.pitch, zoom: view.zoom }), // camera turn / tilt / zoom
       order: () => ({ ...moveOrder }),
       pan: () => ({ ...view.pan, dragging: view.dragging }),
