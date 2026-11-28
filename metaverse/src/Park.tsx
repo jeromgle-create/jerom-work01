@@ -5,7 +5,9 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { Box, BoxInstances, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
+import { Box, BoxInstances, ImageSign, Sign, box, circle, pushOut, type Collider, type V3 } from "./parts";
+import { materials, worldMapped } from "./look";
+import { Forest, HILL } from "./School";
 import { PARK, PARK_EXIT_MAT, PARK_RIDES } from "./zones";
 import { CAR_GAP, LIFT_LINE, RIDES, ridePose } from "../shared/layout.js";
 import type { RideState } from "./net";
@@ -91,75 +93,83 @@ export function resolvePark(pos: THREE.Vector3) {
   pos.z = THREE.MathUtils.clamp(pos.z, PARK.minZ, PARK.maxZ);
 }
 
-// ---------- animals (box-built, gently wandering) ----------
+// ---------- animals (built from rounded parts, gently wandering) ----------
+const SPHERE = new THREE.SphereGeometry(0.5, 20, 14);
+const LIMB = new THREE.CylinderGeometry(0.5, 0.42, 1, 10);
+/** Box-sized part drawn rounded: tall thin parts (legs, necks, trunks) as tapered cylinders, the rest as ellipsoids. */
+function Soft({ p, s, c }: { p: V3; s: V3; c: string }) {
+  const limb = s[1] > 1.8 * Math.max(s[0], s[2]);
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }), [c]);
+  return <mesh position={p} scale={limb ? s : [s[0] * 1.08, s[1] * 1.08, s[2] * 1.05]} geometry={limb ? LIMB : SPHERE} material={mat} castShadow />;
+}
 function Animal({ kind }: { kind: Pen["animal"] }) {
   switch (kind) {
     case "giraffe":
       return (
         <>
-          <Box p={[0, 1.6, 0]} s={[0.9, 0.8, 1.6]} c="#e9b44c" />
-          {[-0.3, 0.3].flatMap((x) => [-0.55, 0.55].map((z) => <Box key={`${x}${z}`} p={[x, 0.6, z]} s={[0.15, 1.2, 0.15]} c="#d39b2d" />))}
-          <Box p={[0, 2.9, 0.65]} s={[0.3, 2, 0.3]} c="#e9b44c" />
-          <Box p={[0, 3.95, 0.85]} s={[0.35, 0.35, 0.6]} c="#e9b44c" />
-          <Box p={[-0.2, 1.8, 0.3]} s={[0.25, 0.25, 0.02]} c="#8b5a2b" />
-          <Box p={[0.25, 1.5, -0.4]} s={[0.3, 0.3, 0.02]} c="#8b5a2b" />
+          <Soft p={[0, 1.6, 0]} s={[0.9, 0.8, 1.6]} c="#e9b44c" />
+          {[-0.3, 0.3].flatMap((x) => [-0.55, 0.55].map((z) => <Soft key={`${x}${z}`} p={[x, 0.6, z]} s={[0.15, 1.2, 0.15]} c="#d39b2d" />))}
+          <Soft p={[0, 2.9, 0.65]} s={[0.3, 2, 0.3]} c="#e9b44c" />
+          <Soft p={[0, 3.95, 0.85]} s={[0.35, 0.35, 0.6]} c="#e9b44c" />
+          <Soft p={[-0.2, 1.8, 0.3]} s={[0.25, 0.25, 0.02]} c="#8b5a2b" />
+          <Soft p={[0.25, 1.5, -0.4]} s={[0.3, 0.3, 0.02]} c="#8b5a2b" />
         </>
       );
     case "elephant":
       return (
         <>
-          <Box p={[0, 1.4, 0]} s={[1.6, 1.4, 2.4]} c="#8d99ae" />
-          {[-0.5, 0.5].flatMap((x) => [-0.8, 0.8].map((z) => <Box key={`${x}${z}`} p={[x, 0.4, z]} s={[0.45, 0.8, 0.45]} c="#7d8597" />))}
-          <Box p={[0, 1.7, 1.45]} s={[1, 1, 0.8]} c="#8d99ae" />
-          <Box p={[0, 1.0, 1.95]} s={[0.3, 1.2, 0.3]} c="#7d8597" />
-          <Box p={[-0.7, 1.8, 1.3]} s={[0.1, 0.9, 0.8]} c="#a3aab8" />
-          <Box p={[0.7, 1.8, 1.3]} s={[0.1, 0.9, 0.8]} c="#a3aab8" />
+          <Soft p={[0, 1.4, 0]} s={[1.6, 1.4, 2.4]} c="#8d99ae" />
+          {[-0.5, 0.5].flatMap((x) => [-0.8, 0.8].map((z) => <Soft key={`${x}${z}`} p={[x, 0.4, z]} s={[0.45, 0.8, 0.45]} c="#7d8597" />))}
+          <Soft p={[0, 1.7, 1.45]} s={[1, 1, 0.8]} c="#8d99ae" />
+          <Soft p={[0, 1.0, 1.95]} s={[0.3, 1.2, 0.3]} c="#7d8597" />
+          <Soft p={[-0.7, 1.8, 1.3]} s={[0.1, 0.9, 0.8]} c="#a3aab8" />
+          <Soft p={[0.7, 1.8, 1.3]} s={[0.1, 0.9, 0.8]} c="#a3aab8" />
         </>
       );
     case "lion":
       return (
         <>
-          <Box p={[0, 0.8, 0]} s={[0.8, 0.7, 1.6]} c="#d4a373" />
-          {[-0.25, 0.25].flatMap((x) => [-0.55, 0.55].map((z) => <Box key={`${x}${z}`} p={[x, 0.25, z]} s={[0.18, 0.5, 0.18]} c="#c08552" />))}
-          <Box p={[0, 1.15, 0.85]} s={[0.95, 0.95, 0.5]} c="#9c6644" />
-          <Box p={[0, 1.1, 1.1]} s={[0.5, 0.5, 0.35]} c="#d4a373" />
+          <Soft p={[0, 0.8, 0]} s={[0.8, 0.7, 1.6]} c="#d4a373" />
+          {[-0.25, 0.25].flatMap((x) => [-0.55, 0.55].map((z) => <Soft key={`${x}${z}`} p={[x, 0.25, z]} s={[0.18, 0.5, 0.18]} c="#c08552" />))}
+          <Soft p={[0, 1.15, 0.85]} s={[0.95, 0.95, 0.5]} c="#9c6644" />
+          <Soft p={[0, 1.1, 1.1]} s={[0.5, 0.5, 0.35]} c="#d4a373" />
         </>
       );
     case "zebra":
       return (
         <>
-          <Box p={[0, 1, 0]} s={[0.7, 0.7, 1.5]} c="#f8f9fa" />
+          <Soft p={[0, 1, 0]} s={[0.7, 0.7, 1.5]} c="#f8f9fa" />
           {[-0.45, -0.15, 0.15, 0.45].map((z) => (
-            <Box key={z} p={[0, 1, z]} s={[0.72, 0.72, 0.1]} c="#212529" />
+            <Soft key={z} p={[0, 1, z]} s={[0.72, 0.72, 0.1]} c="#212529" />
           ))}
-          {[-0.2, 0.2].flatMap((x) => [-0.5, 0.5].map((z) => <Box key={`${x}${z}`} p={[x, 0.33, z]} s={[0.14, 0.66, 0.14]} c="#f8f9fa" />))}
-          <Box p={[0, 1.5, 0.85]} s={[0.3, 0.6, 0.5]} c="#f8f9fa" />
+          {[-0.2, 0.2].flatMap((x) => [-0.5, 0.5].map((z) => <Soft key={`${x}${z}`} p={[x, 0.33, z]} s={[0.14, 0.66, 0.14]} c="#f8f9fa" />))}
+          <Soft p={[0, 1.5, 0.85]} s={[0.3, 0.6, 0.5]} c="#f8f9fa" />
         </>
       );
     case "penguin":
       return (
         <>
-          <Box p={[0, 0.35, 0]} s={[0.4, 0.7, 0.35]} c="#212529" />
-          <Box p={[0, 0.33, 0.12]} s={[0.3, 0.55, 0.15]} c="#ffffff" />
-          <Box p={[0, 0.5, 0.25]} s={[0.1, 0.06, 0.12]} c="#f4a261" />
+          <Soft p={[0, 0.35, 0]} s={[0.4, 0.7, 0.35]} c="#212529" />
+          <Soft p={[0, 0.33, 0.12]} s={[0.3, 0.55, 0.15]} c="#ffffff" />
+          <Soft p={[0, 0.5, 0.25]} s={[0.1, 0.06, 0.12]} c="#f4a261" />
         </>
       );
     case "flamingo":
       return (
         <>
-          <Box p={[0, 1.2, 0]} s={[0.35, 0.35, 0.6]} c="#ff8fab" />
-          <Box p={[0, 0.55, 0]} s={[0.05, 1.1, 0.05]} c="#ff5d8f" />
-          <Box p={[0, 1.6, 0.25]} s={[0.08, 0.6, 0.08]} c="#ff8fab" />
-          <Box p={[0, 1.9, 0.35]} s={[0.15, 0.12, 0.25]} c="#ff8fab" />
+          <Soft p={[0, 1.2, 0]} s={[0.35, 0.35, 0.6]} c="#ff8fab" />
+          <Soft p={[0, 0.55, 0]} s={[0.05, 1.1, 0.05]} c="#ff5d8f" />
+          <Soft p={[0, 1.6, 0.25]} s={[0.08, 0.6, 0.08]} c="#ff8fab" />
+          <Soft p={[0, 1.9, 0.35]} s={[0.15, 0.12, 0.25]} c="#ff8fab" />
         </>
       );
     default:
       return (
         <>
-          <Box p={[0, 0.2, 0]} s={[0.35, 0.3, 0.5]} c="#f1faee" />
-          <Box p={[0, 0.4, 0.2]} s={[0.25, 0.25, 0.25]} c="#f1faee" />
-          <Box p={[-0.06, 0.62, 0.2]} s={[0.06, 0.25, 0.06]} c="#ffc8dd" />
-          <Box p={[0.06, 0.62, 0.2]} s={[0.06, 0.25, 0.06]} c="#ffc8dd" />
+          <Soft p={[0, 0.2, 0]} s={[0.35, 0.3, 0.5]} c="#f1faee" />
+          <Soft p={[0, 0.4, 0.2]} s={[0.25, 0.25, 0.25]} c="#f1faee" />
+          <Soft p={[-0.06, 0.62, 0.2]} s={[0.06, 0.25, 0.06]} c="#ffc8dd" />
+          <Soft p={[0.06, 0.62, 0.2]} s={[0.06, 0.25, 0.06]} c="#ffc8dd" />
         </>
       );
   }
@@ -398,7 +408,13 @@ export function RideVehicles() {
 }
 
 // ---------- trees (instanced) ----------
-function TreeInstances({ spots }: { spots: [number, number][] }) {
+const TREE_COLORS = ["#3f7f5f", "#4f9a6c", "#62b48a", "#e2b92a", "#efb3c6"];
+function Trees({ spots }: { spots: [number, number][] }) {
+  const trees = useMemo(() => spots.map(([x, z], i) => ({ x, z, c: TREE_COLORS[i % 7 < 3 ? i % 3 : (i % 7) - 3 > 1 ? 1 : 3 + ((i % 7) % 2)], h: 0.85 + ((i * 37) % 10) / 20 })), [spots]);
+  return <Forest trees={trees} />;
+}
+// (old box trees, kept for reference: replaced by the shared Forest)
+export function TreeInstances({ spots }: { spots: [number, number][] }) {
   const trunks = useRef<THREE.InstancedMesh>(null);
   const crowns = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
@@ -432,17 +448,14 @@ function TreeInstances({ spots }: { spots: [number, number][] }) {
 }
 
 // ---------- static scenery ----------
+const BLOOM = new THREE.IcosahedronGeometry(0.5, 1);
 function Grounds({ dark }: { dark: boolean }) {
   const items = useMemo(() => {
     const out: Item[] = [];
     const paved = dark ? "#5b5850" : "#d7cfbf";
     // entrance plaza and main road north
     out.push({ p: [0, 0.006, 52], s: [34, 0.01, 16], c: paved });
-    // train road: ring of paving around the lake
-    for (let i = 0; i < 72; i++) {
-      const a = (i / 72) * Math.PI * 2;
-      out.push({ p: [LOOP.x + Math.cos(a) * LOOP.rx, 0.008, LOOP.z + Math.sin(a) * LOOP.rz], s: [3.4, 0.01, 3.4], c: paved });
-    }
+    // (train road around the lake: see RingRoad)
     // zoo walkways and pens
     out.push({ p: [45, 0.006, -35], s: [48, 0.01, 4], c: paved }, { p: [45, 0.006, -15.5], s: [48, 0.01, 3], c: paved });
     out.push({ p: [20, 0.006, -33], s: [3, 0.01, 44], c: paved });
@@ -463,12 +476,13 @@ function Grounds({ dark }: { dark: boolean }) {
     }
     // rose garden: beds of roses with an arch tunnel down the middle
     const roses = ["#e63946", "#ff8fab", "#ffb3c6", "#ffffff", "#c9184a"];
+    const blooms: Item[] = []; // rose bushes, drawn round
     for (let r = 0; r < 6; r++)
       for (const side of [-1, 1]) {
         const x = -48 + side * (3.4 + (r % 2) * 0);
         const z = -18 + r * 5.4;
         out.push({ p: [x + side * 4, 0.2, z], s: [9, 0.4, 2.4], c: "#3a5a40" });
-        for (let k = 0; k < 9; k++) out.push({ p: [x + side * (0.2 + k), 0.6, z + ((k % 2) - 0.5) * 0.9], s: [0.45, 0.45, 0.45], c: roses[(k + r) % roses.length] });
+        for (let k = 0; k < 9; k++) blooms.push({ p: [x + side * (0.2 + k), 0.6, z + ((k % 2) - 0.5) * 0.9], s: [0.5, 0.42, 0.5], c: roses[(k + r) % roses.length] });
       }
     for (let z = -19; z <= 12; z += 2.6) {
       out.push({ p: [-50, 1.4, z], s: [0.12, 2.8, 0.12], c: "#ffffff" }, { p: [-46, 1.4, z], s: [0.12, 2.8, 0.12], c: "#ffffff" }, { p: [-48, 2.85, z], s: [4.2, 0.12, 0.12], c: "#ffffff" });
@@ -486,7 +500,7 @@ function Grounds({ dark }: { dark: boolean }) {
     ["#ffafcc", "#bde0fe", "#ffd6a5", "#caffbf"].forEach((c, i) => out.push({ p: [38 + (i % 2) * 14, 0.02, 32 + Math.floor(i / 2) * 14], s: [3, 0.02, 3], c }));
     // ticket booth + arch pillars
     out.push({ p: [-11, 1.2, 52], s: [3, 2.4, 2.4], c: "#f1faee" }, { p: [-11, 2.55, 52], s: [3.4, 0.3, 2.8], c: "#2a9d8f" });
-    out.push({ p: [-6, 2.2, 46], s: [1, 4.4, 1], c: "#2a9d8f" }, { p: [6, 2.2, 46], s: [1, 4.4, 1], c: "#2a9d8f" }, { p: [0, 4.6, 46], s: [13, 0.8, 1], c: "#2a9d8f" });
+    out.push({ p: [-6, 2.2, 46], s: [1, 4.4, 1], c: "#2a9d8f" }, { p: [6, 2.2, 46], s: [1, 4.4, 1], c: "#2a9d8f" }, { p: [0, 4.6, 46], s: [13, 1.6, 1], c: "#2a9d8f" });
     // lift stations
     for (const p of [LIFT.a, LIFT.b]) {
       out.push({ p: [p.x, 3.2, p.z], s: [4, 0.3, 4], c: "#457b9d" });
@@ -501,12 +515,67 @@ function Grounds({ dark }: { dark: boolean }) {
       mat(r.b.mat as [number, number, number, number], "#e09f3e");
     }
     mat(PARK_EXIT_MAT as [number, number, number, number], "#3bb273");
-    return out;
+    return Object.assign(out, { blooms });
   }, [dark]);
-  return <BoxInstances items={items} />;
+  // surfaces by colour: paving, pen ground, fences, hedges / beds, the rest plain
+  const groups = useMemo(() => {
+    const paved = dark ? "#5b5850" : "#d7cfbf";
+    const pens = new Set(PENS.map((p) => p.ground));
+    const by: Record<"pavers" | "soil" | "wood" | "leaves" | "plain", Item[]> = { pavers: [], soil: [], wood: [], leaves: [], plain: [] };
+    for (const it of items) {
+      const k = it.c === paved ? "pavers" : pens.has(it.c) && it.s[1] < 0.05 ? "soil" : it.c === "#8d6e63" || it.c === "#a47148" ? "wood" : it.c === "#2d6a4f" || it.c === "#3a5a40" ? "leaves" : "plain";
+      by[k].push(it);
+    }
+    return by;
+  }, [items, dark]);
+  const M = materials();
+  return (
+    <>
+      <BoxInstances items={groups.pavers} material={M.pavers} shadow={false} />
+      <BoxInstances items={groups.soil} material={M.soil} shadow={false} />
+      <BoxInstances items={groups.wood} material={M.wood} />
+      <BoxInstances items={groups.leaves} material={M.leaves} />
+      <BoxInstances items={groups.plain} />
+      <BoxInstances items={items.blooms} geometry={BLOOM} material={M.leaves} />
+    </>
+  );
+}
+
+let roadDarkMat: THREE.Material | null = null;
+const roadDark = () => (roadDarkMat ??= worldMapped("pavers", 3, { color: "#6a665e" }));
+/** Smooth paved road for the elephant train around the lake. */
+function RingRoad({ dark }: { dark: boolean }) {
+  const geo = useMemo(() => {
+    const g = new THREE.RingGeometry(1 - 1.7 / 25.5, 1 + 1.7 / 25.5, 120, 1);
+    g.rotateX(-Math.PI / 2);
+    return g;
+  }, []);
+  return (
+    <mesh geometry={geo} position={[LOOP.x, 0.012, LOOP.z]} scale={[LOOP.rx, 1, LOOP.rz]} receiveShadow material={dark ? roadDark() : materials().pavers} />
+  );
+}
+
+/** Lake / fountain water with drifting ripples. */
+function Water({ r, y, x, z, calm = false }: { r: number; y: number; x: number; z: number; calm?: boolean }) {
+  const M = materials();
+  useFrame((_, dt) => {
+    const n = M.water.normalMap!;
+    n.offset.x += dt * 0.012;
+    n.offset.y += dt * 0.007;
+  });
+  M.water.normalMap!.repeat.set(2.5, 2.5);
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[x, y, z]} material={calm ? M.pool : M.water} receiveShadow>
+      <circleGeometry args={[r, 64]} />
+    </mesh>
+  );
 }
 
 function Mountains({ dark }: { dark: boolean }) {
+  const hillMats = useMemo(
+    () => (dark ? ["#2a3d2f"] : ["#4e7f4e", "#46744a", "#5a8a55"]).map((c) => worldMapped("grass", 14, { roughness: 1, color: c })),
+    [dark],
+  );
   const peaks: [number, number, number, number][] = [
     [-60, -95, 26, 34],
     [-20, -105, 34, 44],
@@ -518,10 +587,7 @@ function Mountains({ dark }: { dark: boolean }) {
   return (
     <>
       {peaks.map(([x, z, h, r], i) => (
-        <mesh key={i} position={[x, h / 2 - 1, z]}>
-          <coneGeometry args={[r, h, 7]} />
-          <meshStandardMaterial color={dark ? "#24352a" : ["#5a8f5c", "#4f7f52", "#6a9f62"][i % 3]} flatShading />
-        </mesh>
+        <mesh key={i} position={[x, -1, z]} scale={[r, h, r * 0.9]} geometry={HILL} material={hillMats[i % hillMats.length]} />
       ))}
     </>
   );
@@ -531,7 +597,7 @@ function Signs() {
   const s = (p: V3, text: string, bg = "#ffffff", fg = "#1d3557", w = 3.4) => <Sign key={text + p.join()} p={p} size={[w, 0.6]} text={text} bg={bg} fg={fg} />;
   return (
     <>
-      <Sign p={[0, 4.6, 46.52]} size={[9, 0.7]} text={PARK.name} bg="#2a9d8f" fg="#ffffff" />
+      <ImageSign url="/signs/park.webp" p={[0, 4.6, 46.52]} size={[10.5, 1.4]} fallback={{ p: [0, 4.6, 46.52], size: [9, 0.7], text: PARK.name, bg: "#2a9d8f", fg: "#ffffff" }} />
       {s([-11, 1.6, 53.25], "매표소", "#ffffff", "#2a9d8f", 2)}
       {s([0, 1.6, 59.4], "▼ 한빛초등학교로 돌아가기", "#3bb273", "#ffffff", 4.6)}
       {s([12, 2.4, 53.2], "코끼리열차 타기 → 동물원 (8초 안에 친구도 함께)", "#e09f3e", "#ffffff", 6.4)}
@@ -554,10 +620,17 @@ function Signs() {
 function Greenhouse() {
   return (
     <group position={[GREENHOUSE.x, 0.6, GREENHOUSE.z]}>
-      <mesh scale={[GREENHOUSE.w / 2, 5, GREENHOUSE.d / 2]}>
-        <sphereGeometry args={[1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color="#bde0fe" transparent opacity={0.45} roughness={0.1} />
+      <mesh scale={[GREENHOUSE.w / 2, 5, GREENHOUSE.d / 2]} material={materials().domeGlass}>
+        <sphereGeometry args={[1, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
       </mesh>
+      {/* steel ribs of the dome */}
+      {Array.from({ length: 8 }, (_, i) => (
+        <group key={`r${i}`} scale={[GREENHOUSE.w / 2, 5, GREENHOUSE.d / 2]}>
+          <mesh rotation-y={(i / 8) * Math.PI} material={materials().frame}>
+            <torusGeometry args={[1.002, 0.008, 6, 48, Math.PI]} />
+          </mesh>
+        </group>
+      ))}
       {[-5, -1, 3, 6].map((x, i) => (
         <mesh key={i} position={[x, 1.2, (i % 2 ? 1.5 : -1.5)]}>
           <icosahedronGeometry args={[1.2, 0]} />
@@ -582,30 +655,27 @@ function Tents() {
 }
 
 export default function Park({ dark }: { dark: boolean }) {
+  const M = materials();
+  M.grass.color.set(dark ? "#3c5236" : "#a7cf86");
+  M.soil.color.set(dark ? "#6e6350" : "#d8c49c");
+  M.water.color.set(dark ? "#16324a" : "#2f6f8f");
   return (
     <group position={[PARK.cx, 0, PARK.cz]}>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow>
+      <mesh rotation-x={-Math.PI / 2} receiveShadow material={materials().grass}>
         <planeGeometry args={[2 * HW + 600, 2 * HD + 600]} />
-        <meshStandardMaterial color={dark ? "#33452f" : "#9cc77e"} />
       </mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[LAKE.x, 0.02, LAKE.z]}>
-        <circleGeometry args={[LAKE.r + 0.6, 48]} />
-        <meshStandardMaterial color="#c2b280" />
+      <mesh rotation-x={-Math.PI / 2} position={[LAKE.x, 0.02, LAKE.z]} receiveShadow material={materials().soil}>
+        <circleGeometry args={[LAKE.r + 1.2, 64]} />
       </mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[LAKE.x, 0.04, LAKE.z]}>
-        <circleGeometry args={[LAKE.r, 48]} />
-        <meshStandardMaterial color={dark ? "#1d3557" : "#4ea8de"} roughness={0.2} />
-      </mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[FOUNTAIN.x, 0.3, FOUNTAIN.z]}>
-        <circleGeometry args={[FOUNTAIN.r, 24]} />
-        <meshStandardMaterial color="#90e0ef" />
-      </mesh>
-      <Box p={[FOUNTAIN.x, 0.15, FOUNTAIN.z]} s={[FOUNTAIN.r * 2, 0.3, FOUNTAIN.r * 2]} c="#adb5bd" />
+      <Water x={LAKE.x} y={0.04} z={LAKE.z} r={LAKE.r} />
+      <RingRoad dark={dark} />
+      <Water x={FOUNTAIN.x} y={0.3} z={FOUNTAIN.z} r={FOUNTAIN.r - 0.15} calm />
+      <BoxInstances items={[{ p: [FOUNTAIN.x, 0.15, FOUNTAIN.z], s: [FOUNTAIN.r * 2, 0.3, FOUNTAIN.r * 2], c: "#c9c3b8" }]} material={materials().stone} />
       <Box p={[FOUNTAIN.x, 0.9, FOUNTAIN.z]} s={[0.3, 1.5, 0.3]} c="#caf0f8" />
       <Grounds dark={dark} />
       <Greenhouse />
       <Tents />
-      <TreeInstances spots={TREES} />
+      <Trees spots={TREES} />
       <Mountains dark={dark} />
       {PENS.map((p) => (
         <PenAnimals key={p.name} pen={p} />

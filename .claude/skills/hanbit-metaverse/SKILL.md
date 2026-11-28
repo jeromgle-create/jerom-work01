@@ -24,7 +24,8 @@ Korean, avoid jargon, and always verify in a real browser before saying somethin
 | `src/look.ts` | Canvas-painted textures (grass, soil, concrete, brick, pavers, roof, stone) and `worldMapped(kind, metres)`: a MeshStandardMaterial sampling by world position (box projection) so instanced boxes get real-scale textures without UVs; `materials()` = shared set (+ glass, frame, steel, litGlass). `BoxInstances` takes `material`. |
 | `src/Atmosphere.tsx` | `Atmosphere` (owns `scene.background`): Sky shader rendered ONCE into a cube map (static sun) as the day background, PMREM environment from a soft LDR gradient dome (outdoor) or RoomEnvironment (indoor/night), per-zone `environmentIntensity`. `Sun`: directional light + soft shadow box following the player. |
 | `src/Interior.tsx` | Builds every floor from the layout: walls with door gaps, per-kind room builders (`BUILDERS`), nameplates, stairs pads, colliders (`resolveInterior`). Realistic pass: items carry `m` (`grain` for colours in `WOODS`, `planks`/`vinyl` from `k.floor`), rendered per material (`interiorMaterials()`); terrazzo corridor, plaster walls; daylight windows on the outer north wall wherever no board/cabinet/sign (taller than the sill) uses it. |
-| `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. |
+| `src/Park.tsx` | Park scenery, animals, ambient rides, `RideVehicles` (vehicles carrying riders), `resolvePark`. Realistic pass: grounds split by colour into pavers/soil/wood/leaves materials, `RingRoad` (smooth ring), `Water` (normal-map ripples drifting; `calm` for the fountain), shared `Forest` trees and `HILL`s from School.tsx, animals drawn with `Soft` (ellipsoids / tapered limbs from box sizes), round rose `BLOOM`s, glass dome with ribs. Module-level code must not create canvas textures (sim runs in Node): make them lazy. |
+| `public/signs/` | Sign images designed in Adobe Express (gate name plate, park arch), shown with `ImageSign` (parts.tsx) with a text-sign fallback. |
 | `src/zones.ts` | Typed wrapper over layout + HUD labels (`locationAt`). |
 | `src/Human.tsx` | Avatar: rigged mannequin `public/models/xbot.glb` (Mixamo X Bot, meshopt) cloned per player with `SkeletonUtils.clone`, tinted with the player colour; idle/walk/run blended by measured speed; sitting pose by bending leg bones while riding. Capsule `Avatar` in World.tsx is the loading fallback. |
 | `src/parts.tsx` | Box/BoxInstances/Sign meshes, 2D colliders + `pushOut`. |
@@ -72,6 +73,14 @@ Sky shader itself (HDR: everything washes out white) — the env map is the LDR 
 `environmentIntensity` per zone and compare before/after screenshots of the same views (field,
 main entrance, courtyard, gate, far zoom, phone, park, a floor, dark mode). Visual-only additions
 (canopies, doors, rooftop) need no collider; anything players could walk into does.
+
+**Designed signs (Adobe)** — the Adobe for creativity connector: `adobe_mandatory_init` → author HTML
+(one `.slide` per sign with `data-canvas-width/height`, Adobe Fonts kit from `get_fontkit_embed_url`,
+simple shapes: rect/ellipse divs and basic SVG; curved custom paths may be clipped) →
+`html_export_readiness_skill` → `export_html_to_express` (editable Express doc) → `download_design`
+PNG → convert to WebP into `public/signs/`. Network hosts needed (already on the environment):
+adobe-creativity.adobe.io, to.adobe.com and its S3 redirect host; the typekit kit only serves allowed
+domains, so render through Express, not locally. Never ship font files.
 
 **Avatar / character models** — `src/Human.tsx` + `public/models/` (sources and licence notes in its
 README). Compress new models with glTF Transform (`optimize --compress meshopt`, webp textures);

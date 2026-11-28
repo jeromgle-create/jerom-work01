@@ -519,7 +519,7 @@ export default function World({ selfId, selfStart, players }: Props) {
     <Canvas shadows="soft" camera={{ fov: 50, position: [0, 9, 11], far: 2500 }} dpr={[1, 2]} className="canvas">
       <fog attach="fog" args={[bg, indoor ? 25 : 40, fogFar]} />
       <FogFollowsZoom near={indoor ? 25 : 40} far={fogFar} />
-      <hemisphereLight args={[dark ? "#8090b0" : "#dfeeff", dark ? "#202820" : "#7d8f62", dark ? 0.5 : zone === "park" ? 0.6 : 0.2]} />
+      <hemisphereLight args={[dark ? "#8090b0" : "#dfeeff", dark ? "#202820" : "#7d8f62", dark ? 0.5 : 0.2]} />
       <Sun dark={dark} />
       <Atmosphere outdoor={!indoor} dark={dark} park={zone === "park"} bg={bg} />
       {zone === "park" ? <Park dark={dark} /> : indoor ? <Interior zone={zone} dark={dark} /> : <School dark={dark} />}
