@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { socket, remoteTargets, labelEls, selfPos, debugTeleport, rides, clock, serverNow, view, moveOrder, cafe, bubbleBus, type CafeState, type RideState } from "./net";
-import { CAFE, CAFE_MENU, CAFE_SEATS, PARK, RIDES } from "../shared/layout.js";
+import { CAFE, CAFE_MENU, CAFE_MIN_PRICE, CAFE_SEATS, PARK, RIDES } from "../shared/layout.js";
 import { NPCS, npcAt, npcLine } from "./cafeNpcs";
 import { dogPose } from "./ParkDogs";
 import { locationAt } from "./zones";
@@ -12,7 +12,7 @@ import Joystick from "./Joystick";
 import { VoiceChat } from "./voice";
 import Minimap from "./Minimap";
 
-type JoinAck = { ok: true; selfId: string; now: number; players: Player[] } | { ok: false; error: string };
+type JoinAck = { ok: true; selfId: string; now: number; wallet?: number; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
 type VoiceMode = "off" | "joining" | "live" | "muted";
 /** A cafe button shown when it applies (first one also runs with the E key). */
@@ -51,6 +51,7 @@ export default function App() {
   const [panned, setPanned] = useState(false);
   const [cafeActions, setCafeActions] = useState<CafeAction[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [wallet, setWallet] = useState(CAFE.wallet);
   const [cafeMsg, setCafeMsg] = useState("");
   const talkCount = useRef<number[]>(NPCS.map(() => 0));
 
@@ -69,6 +70,7 @@ export default function App() {
       rides.clear();
       cafe.clear();
       clock.offset = ack.now - Date.now();
+      if (typeof ack.wallet === "number") setWallet(ack.wallet);
       const map: Record<string, Player> = {};
       for (const p of ack.players) {
         map[p.id] = p;
@@ -157,6 +159,8 @@ export default function App() {
       else cafe.set(c.id, { seat: c.seat, order: c.order });
     };
     socket.on("cafe", onCafe);
+    const onWallet = (w: number) => setWallet(w);
+    socket.on("cafe:wallet", onWallet);
     // Bubbles from the scene (barista, cafe customers).
     const onSay = (e: Event) => {
       const d = (e as CustomEvent<{ id: string; text: string; ms: number }>).detail;
@@ -174,6 +178,7 @@ export default function App() {
       socket.off("correct", onCorrect);
       socket.off("ride", onRide);
       socket.off("cafe", onCafe);
+      socket.off("cafe:wallet", onWallet);
       bubbleBus.removeEventListener("say", onSay);
       socket.off("group:state", onGroup);
       socket.off("voice:state", onVoiceState);
@@ -469,17 +474,25 @@ export default function App() {
       {menuOpen && (
         <div className="cafe-menu" role="dialog" aria-label={`${CAFE.name} 메뉴`}>
           <h2>{CAFE.name}</h2>
+          <p className="cafe-wallet" data-testid="wallet">💰 내 지갑 {wallet.toLocaleString("ko-KR")}원</p>
           <ul>
             {CAFE_MENU.map((m, i) => (
               <li key={m.name}>
-                <button type="button" onClick={() => order(i)} data-item={i}>
+                <button type="button" onClick={() => order(i)} data-item={i} disabled={wallet < m.price}>
                   <span className="dot-c" style={{ background: m.color }} />
                   {m.name}
-                  <small>{m.prep / 1000}초</small>
+                  <small>
+                    {m.price.toLocaleString("ko-KR")}원 · {m.prep / 1000}초
+                  </small>
                 </button>
               </li>
             ))}
           </ul>
+          {wallet < CAFE_MIN_PRICE && (
+            <button type="button" className="mini" data-action="allowance" onClick={() => socket.emit("cafe:allowance", {}, cafeError)}>
+              💵 용돈 받기 ({CAFE.wallet.toLocaleString("ko-KR")}원)
+            </button>
+          )}
           <button type="button" className="mini" onClick={() => setMenuOpen(false)}>닫기</button>
         </div>
       )}

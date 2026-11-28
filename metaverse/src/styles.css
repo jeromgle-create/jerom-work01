@@ -268,3 +268,5 @@ button, input { font: inherit; color: inherit; }
   .cafe-actions { bottom: 214px; }
   .cafe-btn kbd { display: none; }
 }
+.cafe-menu .cafe-wallet { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cafe-menu li button:disabled { opacity: 0.45; cursor: default; }
