@@ -67,8 +67,8 @@ function useDark() {
 }
 
 /** A realistic animated person; the simple capsule shows while the model loads. */
-function Person({ color, riding }: { color: string; riding: () => boolean }) {
-  return <Human color={color} riding={riding} fallback={<Avatar color={color} />} />;
+function Person({ id, color, riding }: { id: string; color: string; riding: () => boolean }) {
+  return <Human color={color} seed={id} riding={riding} fallback={<Avatar color={color} />} />;
 }
 
 function Avatar({ color }: { color: string }) {
@@ -283,7 +283,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
 
   return (
     <group ref={group}>
-      <Person color={start.color} riding={() => !!riding.current} />
+      <Person id={start.id} color={start.color} riding={() => !!riding.current} />
     </group>
   );
 }
@@ -482,7 +482,7 @@ function RemotePlayer({ player }: { player: Player }) {
   });
   return (
     <group ref={group}>
-      <Person color={player.color} riding={() => rides.has(player.id)} />
+      <Person id={player.id} color={player.color} riding={() => rides.has(player.id)} />
     </group>
   );
 }
