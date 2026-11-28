@@ -37,7 +37,14 @@ export const view = {
   dragging: false,
   /** Ease the camera back onto the player ("내 위치로"). */
   recenter: false,
+  /** Camera turned around the player (radians, 0 = looking north) and tilted (added elevation). */
+  yaw: 0,
+  pitch: 0,
 };
+/** Held buttons of the on-screen view pad: rates per second, applied by the scene every frame. */
+export const viewPad = { yaw: 0, pitch: 0, zoom: 0, panX: 0, panY: 0 };
+export const PITCH_MIN = 0.12; // lowest camera elevation (rad above the ground)
+export const PITCH_MAX = 1.5; // almost straight down
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 8; // pinch out / wheel: up to 8x the default camera distance
 

@@ -11,6 +11,7 @@ import Chat from "./Chat";
 import Joystick from "./Joystick";
 import { VoiceChat } from "./voice";
 import Minimap from "./Minimap";
+import ViewPad from "./ViewPad";
 
 type JoinAck = { ok: true; selfId: string; now: number; wallet?: number; players: Player[] } | { ok: false; error: string };
 type Bubble = { text: string; until: number };
@@ -343,6 +344,7 @@ export default function App() {
       pos: () => ({ ...selfPos }),
       rides: () => Object.fromEntries(rides),
       zoom: () => view.zoom,
+      view: () => ({ yaw: view.yaw, pitch: view.pitch, zoom: view.zoom }), // camera turn / tilt / zoom
       order: () => ({ ...moveOrder }),
       pan: () => ({ ...view.pan, dragging: view.dragging }),
       remote: (id: string) => remoteTargets.get(id) ?? null, // where another player is shown
@@ -509,6 +511,7 @@ export default function App() {
           </button>
         )}
       </div>
+      <ViewPad />
       <div className="hud-top">
         <span className={connected ? "dot ok" : "dot"} />
         {connected ? `접속자 ${list.length}명` : "재연결 중…"}

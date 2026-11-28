@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { ZOOM_MAX, ZOOM_MIN, cafe, debugTeleport, input, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
+import { PITCH_MAX, PITCH_MIN, ZOOM_MAX, ZOOM_MIN, viewPad, cafe, debugTeleport, input, moveOrder, remoteTargets, rides, selfPos, serverNow, socket, view, type RideState } from "./net";
 import { findPath } from "./pathfind";
 import type { Player } from "./types";
 import School, { resolveCollisions } from "./School";
@@ -26,6 +26,20 @@ const COURTYARD_Z = -8.6;
 // In the park cafe's room the steeper indoor view looks over the (hidden) south wall.
 const camFor = (zone: ZoneId, z = 0, x = 0) =>
   zone === "park" ? (inCafeRoom(x, z) ? CAMERA.indoor : CAMERA.outdoor) : zone !== "outdoor" ? CAMERA.indoor : z < COURTYARD_Z ? CAMERA.courtyard : CAMERA.outdoor;
+
+/** The camera offset turned by the view pad / user: around the player (yaw) and up / down (pitch). */
+const orbitOut = new THREE.Vector3();
+function orbit(offset: THREE.Vector3) {
+  const dist = Math.hypot(offset.y, offset.z);
+  const elev = THREE.MathUtils.clamp(Math.atan2(offset.y, offset.z) + view.pitch, PITCH_MIN, PITCH_MAX);
+  const h = dist * Math.cos(elev);
+  return orbitOut.set(Math.sin(view.yaw) * h, dist * Math.sin(elev), Math.cos(view.yaw) * h);
+}
+/** Screen directions (right, down) → ground directions for the current camera turn. */
+function screenToGround(mx: number, mz: number) {
+  const c = Math.cos(view.yaw), s = Math.sin(view.yaw);
+  return { x: mx * c + mz * s, z: -mx * s + mz * c };
+}
 
 function collide(pos: THREE.Vector3) {
   const zone = zoneAt(pos.x);
@@ -107,7 +121,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     pos.current.set(start.x, 0, start.z);
     zone.current = zoneAt(start.x);
     onZone(zone.current);
-    camera.position.copy(pos.current).add(camFor(zone.current, pos.current.z, pos.current.x).offset);
+    camera.position.copy(pos.current).add(orbit(camFor(zone.current, pos.current.z, pos.current.x).offset));
   }, [start, camera, onZone]);
 
   useFrame(({ size }, dt) => {
@@ -119,6 +133,12 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     if (k.has("d") || k.has("arrowright")) mx += 1;
     if (k.has("w") || k.has("arrowup")) mz -= 1;
     if (k.has("s") || k.has("arrowdown")) mz += 1;
+    // keys / joystick are relative to the screen: turn them with the camera
+    if (view.yaw !== 0) {
+      const g = screenToGround(mx, mz);
+      mx = g.x;
+      mz = g.z;
+    }
     // Click / tap to move: plan a path when a new order arrives; keys or joystick cancel it.
     // Moving yourself (keys / joystick) brings a dragged camera back onto you.
     if (len0(mx, mz) > 0.05) view.recenter = true;
@@ -240,7 +260,7 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
       }
       if (z !== zone.current) view.pan = { x: 0, z: 0 }; // new place: look at yourself again
       zone.current = z;
-      camera.position.copy(pos.current).addScaledVector(cam.offset, view.zoom); // cut, don't fly across the map
+      camera.position.copy(pos.current).addScaledVector(orbit(cam.offset), view.zoom); // cut, don't fly across the map
     }
     selfPos.x = pos.current.x;
     selfPos.z = pos.current.z;
@@ -250,6 +270,19 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     if (g) {
       g.position.copy(pos.current);
       g.rotation.y = ry.current;
+    }
+    // View pad buttons held down: turn, tilt, zoom and slide the view (screen directions).
+    const vp = viewPad;
+    const step = Math.min(dt, 0.1);
+    if (vp.yaw) view.yaw = (view.yaw + vp.yaw * 1.6 * step) % (Math.PI * 2);
+    if (vp.pitch) view.pitch = THREE.MathUtils.clamp(view.pitch + vp.pitch * 0.9 * step, -1.2, 1.2);
+    if (vp.zoom) view.zoom = THREE.MathUtils.clamp(view.zoom * Math.pow(2, vp.zoom * step), ZOOM_MIN, ZOOM_MAX);
+    if (vp.panX || vp.panY) {
+      const g = screenToGround(vp.panX, vp.panY);
+      const sp = 12 * Math.max(1, view.zoom) * step;
+      view.pan.x += g.x * sp;
+      view.pan.z += g.z * sp;
+      view.recenter = false;
     }
     // Drag-to-pan: keep the looked-at point inside the current zone; ease back when recentering.
     const pan = view.pan;
@@ -265,12 +298,13 @@ function LocalPlayer({ start, onZone }: { start: Player; onZone: (z: ZoneId) => 
     const zr = ZONE_RECTS.find((r) => r.id === z) ?? ZONE_RECTS[0];
     pan.x = THREE.MathUtils.clamp(pan.x, zr.minX - pos.current.x, zr.maxX - pos.current.x);
     pan.z = THREE.MathUtils.clamp(pan.z, zr.minZ - pos.current.z, zr.maxZ - pos.current.z);
-    const camTarget = pos.current.clone().addScaledVector(cam.offset, view.zoom); // pinch / wheel zoom
+    const camTarget = pos.current.clone().addScaledVector(orbit(cam.offset), view.zoom); // pinch / wheel zoom
     camTarget.x += pan.x;
     camTarget.z += pan.z;
     if (view.dragging) camera.position.copy(camTarget); // follow the finger exactly while dragging
     else camera.position.lerp(camTarget, Math.min(1, dt * 5));
-    camera.lookAt(pos.current.x + pan.x, pos.current.y + cam.lookY, pos.current.z + pan.z - cam.ahead);
+    // aim a little ahead of the player, in the direction the camera faces
+    camera.lookAt(pos.current.x + pan.x - Math.sin(view.yaw) * cam.ahead, pos.current.y + cam.lookY, pos.current.z + pan.z - Math.cos(view.yaw) * cam.ahead);
     if (g) placeLabel(start.id, g, camera, size.width, size.height);
 
     const now = performance.now();

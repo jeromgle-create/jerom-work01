@@ -270,3 +270,32 @@ button, input { font: inherit; color: inherit; }
 }
 .cafe-menu .cafe-wallet { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .cafe-menu li button:disabled { opacity: 0.45; cursor: default; }
+
+/* 3D view pad: top-right, under the visitor count (the list opens over it) */
+.viewpad, .vp-toggle {
+  position: absolute; top: 60px; right: 12px; z-index: 19;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; backdrop-filter: blur(6px);
+}
+.vp-toggle { padding: 6px 12px; cursor: pointer; font-size: 0.85rem; }
+.viewpad { width: 148px; padding: 8px; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.vp-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 700; }
+.vp-fold { border: 0; background: transparent; cursor: pointer; color: var(--muted); padding: 2px 4px; }
+.vp-label { font-size: 0.7rem; color: var(--muted); text-align: center; margin-top: 2px; }
+.vp-row { display: flex; justify-content: center; align-items: center; gap: 6px; }
+.vp-dpad { display: grid; grid-template-columns: repeat(3, 38px); grid-auto-rows: 34px; gap: 4px; justify-content: center; }
+.vp-btn {
+  min-width: 38px; height: 34px; border-radius: 10px; border: 1px solid var(--border); background: rgba(127, 127, 127, 0.12);
+  font-size: 1rem; line-height: 1; cursor: pointer; touch-action: none;
+}
+.vp-btn:active { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.vp-reset { font-size: 1.15rem; }
+.vp-row .vp-btn[data-vp^="pitch"] { font-size: 0.75rem; padding: 0 8px; }
+.vp-reset.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.vp-compass { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; position: relative; }
+.vp-compass span { display: flex; flex-direction: column; align-items: center; line-height: 1; color: #d43c3c; font-size: 0.7rem; transition: transform 0.12s linear; }
+.vp-compass b { font-size: 0.6rem; }
+.vp-compass span::after { content: "▼"; color: var(--muted); font-size: 0.7rem; }
+@media (pointer: coarse) {
+  .viewpad, .vp-toggle { top: 56px; }
+  .viewpad { width: 140px; }
+}
