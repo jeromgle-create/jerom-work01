@@ -209,16 +209,20 @@ if (on("voice")) {
   await a.click(".voice-btn");
   await b.click(".voice-btn");
   await b.waitForFunction(() => window.__mvVoice.debug().some((p) => p.state === "connected" && p.hasAudio), null, { timeout: 30000 });
-  const vol = async () => {
+  const aId = await selfId(a);
+  // Measure only once the listener sees the speaker at the new spot (slow pages lag behind).
+  const vol = async (x, z) => {
+    if (x !== undefined) {
+      await teleport(a, x, z);
+      await b.waitForFunction(([id, x, z]) => { const t = window.__mvDebug.remote(id); return t && Math.hypot(t.x - x, t.z - z) < 0.5; }, [aId, x, z], { timeout: 20000 }).catch(() => {});
+    }
     await b.waitForTimeout(900);
     return (await b.evaluate(() => window.__mvVoice.debug()))[0].volume;
   };
   check((await vol()) > 0.95, "2 m apart: full volume");
-  await teleport(a, -8, 17);
-  const v10 = await vol();
+  const v10 = await vol(-8, 17);
   check(Math.abs(v10 - 0.46) < 0.05, "10 m apart: about half volume", `${v10}`);
-  await teleport(a, 0, 26);
-  check((await vol()) === 0, "20 m apart: silent");
+  check((await vol(0, 26)) === 0, "20 m apart: silent");
   await closeAll();
 }
 

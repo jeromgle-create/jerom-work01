@@ -108,7 +108,10 @@ Testing gotchas learned the hard way:
   `VITE_MV_DEBUG=1` or wait.
 - Richer graphics lower software-WebGL fps (≈4 → 2): timing between two pages gets tight, so start
   multi-player actions in parallel (`Promise.all`, as in the shared-train check), never rely on a
-  page being quick.
+  page being quick. After moving one player, wait until the OTHER page sees them there
+  (`__mvDebug.remote(id)`) before measuring anything that depends on distance (voice volume, chat).
+  Wait for conditions (`waitForFunction`) instead of fixed sleeps: a floor's first visit takes ~5 s
+  under software rendering (build + material compile).
 
 ## Deploy
 
