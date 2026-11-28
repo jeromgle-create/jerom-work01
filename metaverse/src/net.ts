@@ -12,6 +12,19 @@ export const input = {
   joy: { x: 0, y: 0 },
 };
 
+/**
+ * Floating thumb joystick (phones): a touch that starts in the lower part of the screen becomes a
+ * joystick centred where the thumb landed — left or right hand alike. The scene's pointer handler
+ * drives it; Joystick.tsx draws it. Knob offset in px; `used` hides the first-time hint.
+ */
+export const joyUi = { active: false, x: 0, y: 0, kx: 0, ky: 0, used: false };
+export const JOY_RADIUS = 48;
+/** Lower share of the screen where a touch starts the joystick (above it, a drag still pans). */
+export const JOY_ZONE = 0.4;
+const joyListeners = new Set<() => void>();
+export const onJoyUi = (f: () => void) => (joyListeners.add(f), () => void joyListeners.delete(f));
+export const joyChanged = () => joyListeners.forEach((f) => f());
+
 /** DOM name-tag elements keyed by player id; positioned each frame by the 3D scene. */
 export const labelEls = new Map<string, HTMLDivElement>();
 

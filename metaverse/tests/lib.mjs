@@ -104,6 +104,15 @@ export async function touch(page) {
       for (let i = 1; i <= steps; i++) await send("touchMove", [{ x: x0 + ((x1 - x0) * i) / steps, y: y0 + ((y1 - y0) * i) / steps, id: 1 }], (t += 0.03));
       await send("touchEnd", [], t + 0.03);
     },
+    /** Press, slide to (x1, y1) and keep the finger there for `ms` (a thumb on the joystick). */
+    async hold(x0, y0, x1, y1, ms) {
+      let t = Date.now() / 1000;
+      await send("touchStart", [{ x: x0, y: y0, id: 1 }], t);
+      for (let i = 1; i <= 5; i++) await send("touchMove", [{ x: x0 + ((x1 - x0) * i) / 5, y: y0 + ((y1 - y0) * i) / 5, id: 1 }], (t += 0.03));
+      await page.waitForTimeout(ms);
+      await send("touchMove", [{ x: x1, y: y1, id: 1 }], Date.now() / 1000);
+      await send("touchEnd", [], Date.now() / 1000 + 0.03);
+    },
     /** Two fingers from `from` px apart to `to` px apart around (cx, cy). */
     async pinch(cx, cy, from, to, steps = 8) {
       const pts = (d) => [
