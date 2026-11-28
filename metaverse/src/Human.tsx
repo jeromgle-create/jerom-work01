@@ -8,6 +8,27 @@ import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { ARM, hands, type ArmPose } from "./hands";
+
+const E = new THREE.Euler();
+const QA = new THREE.Quaternion();
+const QB = new THREE.Quaternion();
+const POSES = ["hold", "table", "mouth"] as const;
+/** Add the blended pose rotation to one bone (after the clips set it this frame); later poses win. */
+function bend(bone: THREE.Object3D | undefined, part: "arm" | "fore" | "hand", A: typeof ARM, p: ArmPose) {
+  if (!bone) return;
+  QB.identity();
+  let any = false;
+  for (const k of POSES) {
+    const w = p[k] ?? 0;
+    if (w <= 0) continue;
+    const r = A[k][part];
+    QA.setFromEuler(E.set(r[0], r[1], r[2]));
+    QB.slerp(QA, w);
+    any = true;
+  }
+  if (any) bone.quaternion.multiply(QB);
+}
 
 const URL = "/models/xbot.glb";
 const HEIGHT = 1.75; // metres, same as the old capsule avatar
@@ -27,6 +48,10 @@ type Props = {
   seed?: string;
   /** true while seated on a ride: play idle whatever the speed */
   riding?: () => boolean;
+  /** right-arm pose (carrying / drinking), blended on top of the clips */
+  arm?: () => ArmPose | null;
+  /** publish the right hand's world position under this key (see hands.ts) */
+  hand?: string;
   fallback: ReactNode;
 };
 
@@ -87,7 +112,7 @@ function outfitMaterial(src: THREE.MeshStandardMaterial, geo: THREE.BufferGeomet
   return mat;
 }
 
-function HumanModel({ color, riding, seed = "" }: Props) {
+function HumanModel({ color, riding, arm, hand, seed = "" }: Props) {
   const model = useLoader(GLTFLoader, URL, withMeshopt) as GLTF;
   const root = useRef<THREE.Group>(null);
 
@@ -142,7 +167,13 @@ function HumanModel({ color, riding, seed = "" }: Props) {
   // Bones bent by hand for the sitting pose (the clips have none).
   const legs = useMemo(() => {
     const b = (n: string) => scene.getObjectByName(n) as THREE.Bone | undefined;
-    return { up: [b("mixamorigLeftUpLeg"), b("mixamorigRightUpLeg")], knee: [b("mixamorigLeftLeg"), b("mixamorigRightLeg")] };
+    return {
+      up: [b("mixamorigLeftUpLeg"), b("mixamorigRightUpLeg")],
+      knee: [b("mixamorigLeftLeg"), b("mixamorigRightLeg")],
+      arm: b("mixamorigRightArm"),
+      fore: b("mixamorigRightForeArm"),
+      hand: b("mixamorigRightHand"),
+    };
   }, [scene]);
   const body = useRef<THREE.Group>(null);
 
@@ -178,7 +209,23 @@ function HumanModel({ color, riding, seed = "" }: Props) {
     for (const bone of legs.up) bone?.rotateX(seated ? SIT_HIP : 0);
     for (const bone of legs.knee) bone?.rotateX(seated ? SIT_KNEE : 0);
     if (body.current) body.current.position.y = seated ? -SIT_DROP : 0;
+    // Carrying a cup / drinking: bend the right arm, then tell the cup where the hand is.
+    // test builds can try other angles / force a pose from the console (tuning)
+    const dbg = import.meta.env.VITE_MV_DEBUG === "1" ? (window as unknown as { __mvArm?: typeof ARM; __mvArmForce?: ArmPose }) : undefined;
+    const A = dbg?.__mvArm ?? ARM;
+    const p = (hand && dbg?.__mvArmForce) || arm?.();
+    if (p) {
+      bend(legs.arm, "arm", A, p);
+      bend(legs.fore, "fore", A, p);
+      bend(legs.hand, "hand", A, p);
+    }
+    if (hand && legs.hand) {
+      legs.hand.updateWorldMatrix(true, false);
+      const v = hands.get(hand) ?? new THREE.Vector3();
+      hands.set(hand, legs.hand.localToWorld(v.set(A.grip[0], A.grip[1], A.grip[2])));
+    }
   });
+  useEffect(() => () => void (hand && hands.delete(hand)), [hand]);
 
   return (
     <group ref={root}>

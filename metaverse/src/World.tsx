@@ -8,7 +8,7 @@ import School, { resolveCollisions } from "./School";
 import Interior, { resolveInterior } from "./Interior";
 import Park, { RideVehicles, resolvePark } from "./Park";
 import { CAFE_SEATS, PARK, RIDES, inCafeRoom, ZONE_RECTS, cafeStandSpot, seatEndU, seatPose } from "../shared/layout.js";
-import { CAFE_SEAT_Y } from "./Cafe";
+import { CAFE_SEAT_Y, guestArm } from "./Cafe";
 import { portalAt, zoneAt, type ZoneId } from "./zones";
 import Human from "./Human";
 import { Atmosphere, Sun } from "./Atmosphere";
@@ -57,7 +57,7 @@ function useDark() {
 
 /** A realistic animated person; the simple capsule shows while the model loads. */
 function Person({ id, color, riding }: { id: string; color: string; riding: () => boolean }) {
-  return <Human color={color} seed={id} riding={riding} fallback={<Avatar color={color} />} />;
+  return <Human color={color} seed={id} riding={riding} arm={() => guestArm(id)} hand={id} fallback={<Avatar color={color} />} />;
 }
 
 function Avatar({ color }: { color: string }) {
