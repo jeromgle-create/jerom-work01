@@ -12,6 +12,7 @@ import { cafe, labelEls, remoteTargets, sayBubble, selfPos, serverNow, socket } 
 import { placeLabel } from "./labels";
 import Human from "./Human";
 import { NPCS, npcAt, type NpcPhase } from "./cafeNpcs";
+import { hands, type ArmPose } from "./hands";
 
 /** Height of a seated guest's group (Human lowers a seated body by 0.5 m). */
 export const CAFE_SEAT_Y = 0.06;
@@ -205,6 +206,7 @@ function Npc({ i }: { i: number }) {
   const cup = useRef<THREE.Group>(null);
   const tableCup = useRef<THREE.Group>(null);
   const seated = useRef(false);
+  const arm = useRef<ArmPose | null>(null);
   const lastPhase = useRef<{ phase: NpcPhase; start: number } | null>(null);
   // item / sips left change a few times per visit: keep them in state so the drink re-renders
   const [drink, setDrink] = useState(() => {
@@ -222,11 +224,16 @@ function Npc({ i }: { i: number }) {
     o.rotation.y = p.ry;
     seated.current = p.seated;
     if (p.item !== drink.item || p.left !== drink.left) setDrink({ item: p.item, left: p.left });
-    if (cup.current) cup.current.visible = p.visible && p.cup === "hand";
+    arm.current = p.cup === "hand" ? { hold: 1 } : p.cup === "table" && p.seated ? { table: 1, mouth: p.sip } : null;
+    const h = hands.get(`npc:${i}`);
+    if (cup.current) {
+      cup.current.visible = p.visible && p.cup === "hand";
+      if (h) inHand(cup.current, h, p.ry);
+    }
     const tc = tableCup.current;
     if (tc) {
       tc.visible = p.cup === "table";
-      placeSip(tc, p.seat, p.sip);
+      placeSip(tc, p.seat, p.sip, h);
     }
     // a bubble when a phase starts (each client fires it from the same schedule)
     const lp = lastPhase.current;
@@ -242,23 +249,56 @@ function Npc({ i }: { i: number }) {
   return (
     <>
       <group ref={g}>
-        <Human color={NPCS[i].color} seed={`npc-${NPCS[i].name}`} riding={() => seated.current} fallback={null} />
-        <group ref={cup} position={[-0.3, 0.92, 0.18]}>
-          <Drink item={drink.item} />
-        </group>
+        <Human color={NPCS[i].color} seed={`npc-${NPCS[i].name}`} riding={() => seated.current} arm={() => arm.current} hand={`npc:${i}`} fallback={null} />
+      </group>
+      <group ref={cup}>
+        <Drink item={drink.item} />
       </group>
       <Drink item={drink.item} left={drink.left} group={tableCup} />
     </>
   );
 }
 
-/** Put a drink on the table in front of seat `seat`; sip 0..1 lifts it to the guest's mouth and back. */
-function placeSip(o: THREE.Object3D, seat: number, sip: number) {
+/** How far a cup's bottom sits below the grip point of the hand holding it. */
+const GRIP_DROP = 0.06;
+/** Put a cup in the hand that holds it (park-local), upright. */
+function inHand(o: THREE.Object3D, h: THREE.Vector3, ry: number) {
+  o.position.set(h.x - PARK.cx, h.y - GRIP_DROP, h.z - PARK.cz);
+  o.rotation.set(0, ry, 0);
+}
+/**
+ * A drink on the table in front of seat `seat`. During a sip (0..1..0) the hand picks it up, brings it
+ * to the mouth (the arm does the moving: see guestArm / Human) and puts it back; `hand` is that hand.
+ */
+function placeSip(o: THREE.Object3D, seat: number, sip: number, hand?: THREE.Vector3) {
   const spot = cafeTableSpot(seat);
   const s = CAFE_SEATS[seat];
-  const mouth = { x: s.x + Math.sin(s.ry) * 0.22, z: s.z + Math.cos(s.ry) * 0.22, y: CAFE_SEAT_Y + 1.12 };
-  o.position.set(spot.x + (mouth.x - spot.x) * sip, TABLE_TOP + (mouth.y - TABLE_TOP) * sip, spot.z + (mouth.z - spot.z) * sip);
-  o.rotation.set(0, 0, -0.9 * sip * Math.sign(Math.sin(s.ry))); // tip it towards the face
+  if (hand && sip > 0) {
+    const k = Math.min(1, sip / 0.2); // first fifth of the lift: from the table into the hand
+    const hx = hand.x - PARK.cx, hy = hand.y - GRIP_DROP, hz = hand.z - PARK.cz;
+    o.position.set(spot.x + (hx - spot.x) * k, TABLE_TOP + (hy - TABLE_TOP) * k, spot.z + (hz - spot.z) * k);
+    // tip it towards the face at the top of the sip
+    const tip = Math.max(0, (sip - 0.5) * 2) * 0.9;
+    o.rotation.set(0, 0, 0);
+    o.rotateY(s.ry);
+    o.rotateX(tip);
+    return;
+  }
+  o.position.set(spot.x, TABLE_TOP, spot.z);
+  o.rotation.set(0, 0, 0);
+}
+/** Test builds: `window.__mvSip = 0..1` freezes every guest's drink at that point of a sip (screenshots). */
+const sipForce = () => (import.meta.env.VITE_MV_DEBUG === "1" ? (window as unknown as { __mvSip?: number }).__mvSip : undefined);
+const sipNow = (sipUntil: number, now: number) => sipForce() ?? (sipUntil > now ? Math.max(0, Math.sin(((SIP_MS - (sipUntil - now)) / SIP_MS) * Math.PI)) : 0);
+/** Arm pose of a guest (player): holding the cup, or lifting it to drink, from the server's state. */
+export function guestArm(id: string): ArmPose | null {
+  const ord = cafe.get(id)?.order;
+  if (!ord) return null;
+  if (ord.stage === "held") return { hold: 1 };
+  if (ord.stage === "placed" && ord.seat !== null && cafe.get(id)?.seat === ord.seat) {
+    return { table: 1, mouth: sipNow(ord.sipUntil, serverNow()) };
+  }
+  return null;
 }
 
 type DrinkRow = { id: string; item: number; left: number };
@@ -279,16 +319,13 @@ function GuestDrinks() {
     for (const [id, gr] of groups.current) {
       const ord = cafe.get(id)?.order;
       if (!ord) continue;
+      const h = hands.get(id);
       if (ord.stage === "held") {
-        // carried: right hand height, slightly in front of the guest
+        // carried in the right hand (the arm is bent to hold it: see guestArm)
         const t = id === socket.id ? selfPos : remoteTargets.get(id);
-        if (!t) continue;
-        const ry = t.ry, lx = -0.3, lz = 0.18;
-        gr.position.set(t.x - PARK.cx + Math.cos(ry) * lx + Math.sin(ry) * lz, 0.92, t.z - Math.sin(ry) * lx + Math.cos(ry) * lz);
-        gr.rotation.set(0, ry, 0);
+        if (h && t) inHand(gr, h, t.ry);
       } else if (ord.seat !== null) {
-        const sip = ord.sipUntil > now ? Math.sin(((SIP_MS - (ord.sipUntil - now)) / SIP_MS) * Math.PI) : 0;
-        placeSip(gr, ord.seat, Math.max(0, sip));
+        placeSip(gr, ord.seat, sipNow(ord.sipUntil, now), h);
       }
     }
   });
