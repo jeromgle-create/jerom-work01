@@ -9,7 +9,7 @@ import { Box, BoxInstances, ImageSign, Sign, box, circle, pushOut, type Collider
 import { materials, worldMapped } from "./look";
 import { Forest, HILL } from "./School";
 import { PARK, PARK_EXIT_MAT, PARK_RIDES } from "./zones";
-import { CAR_GAP, LIFT_LINE, RIDES, ridePose } from "../shared/layout.js";
+import { CAR_GAP, LIFT_LEFT, LIFT_LEN, LIFT_LINE, RIDES, liftCableY, ridePose } from "../shared/layout.js";
 import type { RideState } from "./net";
 import { rides, serverNow } from "./net";
 import Cafe, { CAFE_COLLIDERS } from "./Cafe";
@@ -243,49 +243,191 @@ function ElephantTrain() {
   );
 }
 
+/** A point on the chairlift's cable loop at distance `s` (metres) from station a's boarding point. */
+const LOOP_R = LIFT_LINE.side;
+const LOOP_LEN = 2 * LIFT_LEN + 2 * Math.PI * LOOP_R;
+const D = { x: (LIFT.b.x - LIFT.a.x) / LIFT_LEN, z: (LIFT.b.z - LIFT.a.z) / LIFT_LEN };
+function loopPoint(s: number) {
+  s = ((s % LOOP_LEN) + LOOP_LEN) % LOOP_LEN;
+  const L = LIFT_LEN;
+  const r = LOOP_R;
+  const arc = Math.PI * r;
+  if (s < L) {
+    const k = s / L;
+    return { x: LIFT.a.x + D.x * s + LIFT_LEFT.x * r, z: LIFT.a.z + D.z * s + LIFT_LEFT.z * r, y: liftCableY(k), ry: Math.atan2(D.x, D.z) };
+  }
+  if (s < L + arc) {
+    const th = (s - L) / r; // around the far bullwheel, left line → right line
+    const c = Math.cos(th);
+    const sn = Math.sin(th);
+    return {
+      x: LIFT.b.x + LIFT_LEFT.x * r * c + D.x * r * sn,
+      z: LIFT.b.z + LIFT_LEFT.z * r * c + D.z * r * sn,
+      y: LIFT_LINE.station,
+      ry: Math.atan2(D.x * c - LIFT_LEFT.x * sn, D.z * c - LIFT_LEFT.z * sn),
+    };
+  }
+  if (s < 2 * L + arc) {
+    const k = 1 - (s - L - arc) / L;
+    return { x: LIFT.a.x + D.x * k * L - LIFT_LEFT.x * r, z: LIFT.a.z + D.z * k * L - LIFT_LEFT.z * r, y: liftCableY(k), ry: Math.atan2(-D.x, -D.z) };
+  }
+  const th = (s - 2 * L - arc) / r; // around the near bullwheel, right line → left line
+  const c = Math.cos(th);
+  const sn = Math.sin(th);
+  return {
+    x: LIFT.a.x - LIFT_LEFT.x * r * c - D.x * r * sn,
+    z: LIFT.a.z - LIFT_LEFT.z * r * c - D.z * r * sn,
+    y: LIFT_LINE.station,
+    ry: Math.atan2(-D.x * c + LIFT_LEFT.x * sn, -D.z * c + LIFT_LEFT.z * sn),
+  };
+}
+
+const CHAIR_COLORS = ["#e63946", "#457b9d", "#f4a261", "#2a9d8f"];
+/** A two-seat chair hanging from its cable grip (group origin = grip on the cable). */
+function Chair({ color }: { color: string }) {
+  const drop = LIFT_LINE.hang - 0.35; // grip → seat surface
+  return (
+    <>
+      <Box p={[0, -0.04, 0]} s={[0.18, 0.12, 0.34]} c="#2b2d31" shadow={false} />
+      <Box p={[0, -drop / 2, -0.12]} s={[0.05, drop, 0.05]} c="#3a3d42" shadow={false} />
+      <Box p={[0, -drop + 0.62, -0.12]} s={[1.15, 0.05, 0.05]} c="#3a3d42" shadow={false} />
+      <Box p={[0, -drop, 0]} s={[1.15, 0.1, 0.56]} c={color} />
+      <Box p={[0, -drop + 0.32, -0.27]} s={[1.15, 0.55, 0.06]} c={color} />
+      <Box p={[0, -drop + 0.28, 0.18]} s={[1.1, 0.04, 0.04]} c="#3a3d42" shadow={false} />
+      <Box p={[0, -drop - 0.42, 0.3]} s={[1.05, 0.04, 0.2]} c="#3a3d42" shadow={false} />
+    </>
+  );
+}
+
 function SkyLift() {
-  const n = 12;
+  const n = 18;
   const chairs = useRef<(THREE.Group | null)[]>([]);
-  const dir = useMemo(() => LIFT.b.clone().sub(LIFT.a), []);
-  const len = dir.length();
-  const side = useMemo(() => new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(0.9), [dir]);
-  const angle = Math.atan2(dir.x, dir.z);
   useFrame(({ clock }) => {
     chairs.current.forEach((g, i) => {
       if (!g) return;
-      const u = (clock.elapsedTime * 0.02 + i / n) % 1;
-      const up = i % 2 === 0;
-      const t = up ? u : 1 - u;
-      const p = LIFT.a.clone().addScaledVector(dir, t).add(up ? side : side.clone().negate());
-      g.position.set(p.x, LIFT.y - 1.4, p.z);
+      const p = loopPoint(clock.elapsedTime * 3 + (i / n) * LOOP_LEN);
+      g.position.set(p.x, p.y, p.z);
+      g.rotation.y = p.ry;
     });
   });
-  const towers = useMemo(() => Array.from({ length: 6 }, (_, i) => LIFT.a.clone().addScaledVector(dir, (i + 0.5) / 6)), [dir]);
+  // one continuous cable around both bullwheels
+  const cable = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    for (let s = 0; s < LOOP_LEN; s += 0.6) {
+      const p = loopPoint(s);
+      pts.push(new THREE.Vector3(p.x, p.y, p.z));
+    }
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 900, 0.045, 5, true);
+  }, []);
+  const M = materials();
+  const towers = useMemo(() => {
+    const count = 6;
+    return Array.from({ length: count }, (_, i) => {
+      const k = LIFT_LINE.ramp + ((1 - 2 * LIFT_LINE.ramp) * i) / (count - 1);
+      return { x: LIFT.a.x + D.x * k * LIFT_LEN, z: LIFT.a.z + D.z * k * LIFT_LEN, y: liftCableY(k) };
+    });
+  }, []);
+  const angle = Math.atan2(D.x, D.z);
   return (
     <>
-      {[side, side.clone().negate()].map((s, k) => (
-        <mesh key={k} position={[(LIFT.a.x + LIFT.b.x) / 2 + s.x, LIFT.y, (LIFT.a.z + LIFT.b.z) / 2 + s.z]} rotation-y={angle}>
-          <boxGeometry args={[0.05, 0.05, len]} />
-          <meshBasicMaterial color="#333" />
-        </mesh>
-      ))}
+      <mesh geometry={cable} material={M.steel} castShadow />
       {towers.map((t, i) => (
-        <group key={i}>
-          <Box p={[t.x, LIFT.y / 2, t.z]} s={[0.35, LIFT.y, 0.35]} c="#6c757d" />
-          <mesh position={[t.x, LIFT.y, t.z]} rotation-y={angle + Math.PI / 2}>
-            <boxGeometry args={[0.15, 0.15, 2.4]} />
-            <meshStandardMaterial color="#6c757d" />
+        <group key={i} position={[t.x, 0, t.z]} rotation-y={angle}>
+          {/* tapered steel tube on a concrete footing */}
+          <mesh position={[0, 0.25, 0]} material={M.stone} receiveShadow>
+            <boxGeometry args={[1.4, 0.5, 1.4]} />
           </mesh>
+          <mesh position={[0, (t.y + 0.7) / 2, 0]} material={M.steel} castShadow>
+            <cylinderGeometry args={[0.2, 0.34, t.y + 0.7, 12]} />
+          </mesh>
+          {/* crossarm across both lines */}
+          <mesh position={[0, t.y + 0.55, 0]} material={M.steel} castShadow>
+            <boxGeometry args={[2 * LOOP_R + 1.2, 0.22, 0.3]} />
+          </mesh>
+          {/* sheave trains the cable runs over */}
+          {[1, -1].map((sd) => (
+            <group key={sd} position={[sd * LOOP_R, t.y + 0.1, 0]}>
+              <Box p={[0, 0.2, 0]} s={[0.08, 0.4, 0.08]} c="#5d6168" shadow={false} />
+              <Box p={[0, 0, 0]} s={[0.16, 0.2, 1.5]} c="#2b2d31" shadow={false} />
+              {[-0.5, 0, 0.5].map((z) => (
+                <mesh key={z} position={[0, -0.02, z]} rotation-z={Math.PI / 2}>
+                  <cylinderGeometry args={[0.13, 0.13, 0.12, 12]} />
+                  <meshStandardMaterial color="#c9cdd2" metalness={0.7} roughness={0.35} />
+                </mesh>
+              ))}
+            </group>
+          ))}
         </group>
       ))}
+      <LiftStation at={LIFT.a} away={-1} />
+      <LiftStation at={LIFT.b} away={1} />
       {Array.from({ length: n }, (_, i) => (
-        <group key={i} ref={(el) => (chairs.current[i] = el)} rotation-y={angle}>
-          <Box p={[0, 0.7, 0]} s={[0.04, 1.4, 0.04]} c="#333" shadow={false} />
-          <Box p={[0, 0, 0]} s={[1, 0.12, 0.5]} c={["#e63946", "#457b9d", "#f4a261"][i % 3]} />
-          <Box p={[0, 0.3, -0.22]} s={[1, 0.5, 0.06]} c={["#e63946", "#457b9d", "#f4a261"][i % 3]} />
+        <group key={i} ref={(el) => (chairs.current[i] = el)}>
+          <Chair color={CHAIR_COLORS[i % CHAIR_COLORS.length]} />
         </group>
       ))}
     </>
+  );
+}
+
+/**
+ * Lift terminal: concrete boarding platform with a loading line, the horizontal bullwheel the cable
+ * turns around (spokes, hub, axle), the drive housing above it and a steel frame with a roof.
+ * `away` = which way along the a→b axis points out of the line (-1 at a, +1 at b).
+ */
+function LiftStation({ at, away }: { at: THREE.Vector3; away: 1 | -1 }) {
+  const M = materials();
+  const angle = Math.atan2(D.x * away, D.z * away); // local +z points out of the line
+  const y = LIFT_LINE.station;
+  const r = LOOP_R;
+  return (
+    <group position={[at.x, 0, at.z]} rotation-y={angle}>
+      {/* boarding platform and loading line under both cable lines */}
+      <BoxInstances
+        material={M.stone}
+        items={[{ p: [0, 0.06, -1.2], s: [6.6, 0.12, 7.4], c: "#cfcac0" }]}
+      />
+      <BoxInstances
+        shadow={false}
+        items={[
+          { p: [0, 0.125, 0], s: [2 * r + 1.4, 0.01, 0.14], c: "#f2c230" },
+          { p: [0, 0.125, -3.2], s: [6.4, 0.01, 0.1], c: "#ffffff" },
+        ]}
+      />
+      {/* bullwheel */}
+      <mesh position={[0, y, 0]} rotation-x={Math.PI / 2} material={M.steel} castShadow>
+        <torusGeometry args={[r, 0.09, 10, 48]} />
+      </mesh>
+      {[0, Math.PI / 3, (2 * Math.PI) / 3].map((a) => (
+        <mesh key={a} position={[0, y, 0]} rotation-y={a} material={M.steel}>
+          <boxGeometry args={[0.08, 0.08, 2 * r]} />
+        </mesh>
+      ))}
+      <mesh position={[0, y + 0.55, 0]} material={M.steel} castShadow>
+        <cylinderGeometry args={[0.16, 0.24, 1.3, 12]} />
+      </mesh>
+      {/* drive housing */}
+      <mesh position={[0, y + 1.55, 0.6]} castShadow>
+        <boxGeometry args={[2.4, 0.9, 2.6]} />
+        <meshStandardMaterial color="#2f6f9f" roughness={0.45} metalness={0.3} />
+      </mesh>
+      {/* steel frame and roof, clear of the cable lines */}
+      {[-1, 1].flatMap((sd) =>
+        [-1.6, 2.6].map((z) => (
+          <mesh key={`${sd}${z}`} position={[sd * (r + 1.6), 2.35, z]} material={M.steel} castShadow>
+            <boxGeometry args={[0.22, 4.7, 0.22]} />
+          </mesh>
+        )),
+      )}
+      {[-1, 1].map((sd) => (
+        <mesh key={`b${sd}`} position={[sd * (r + 1.6), 4.6, 0.5]} material={M.steel}>
+          <boxGeometry args={[0.2, 0.25, 4.6]} />
+        </mesh>
+      ))}
+      <mesh position={[0, 4.85, 0.5]} castShadow material={M.metalRoof}>
+        <boxGeometry args={[2 * r + 4.0, 0.2, 5.4]} />
+      </mesh>
+    </group>
   );
 }
 
@@ -343,7 +485,6 @@ function TrainCar({ head, color }: { head: boolean; color: string }) {
 export function RideVehicles() {
   const trains = useRef<(THREE.Group | null)[][]>(Array.from({ length: POOL }, () => []));
   const chairs = useRef<(THREE.Group | null)[]>([]);
-  const hangers = useRef<(THREE.Mesh | null)[]>([]);
   useFrame(() => {
     let ti = 0;
     let ci = 0;
@@ -367,15 +508,12 @@ export function RideVehicles() {
         ti++;
       } else if (spec.vehicle === "chair" && ci < POOL) {
         const g = chairs.current[ci];
-        const h = hangers.current[ci];
         const p = ridePose(r.ride, r.dir, u);
-        if (g && h) {
+        if (g) {
           g.visible = true;
-          g.position.set(p.x - PARK.cx, p.y + 0.35, p.z - PARK.cz);
+          // group origin = grip on the cable, the chair hangs below (seat under the rider)
+          g.position.set(p.x - PARK.cx, p.y + LIFT_LINE.hang, p.z - PARK.cz);
           g.rotation.y = p.ry;
-          const len = Math.max(0.3, LIFT_LINE.y - (p.y + 0.35));
-          h.scale.y = len;
-          h.position.y = len / 2;
         }
         ci++;
       }
@@ -397,13 +535,7 @@ export function RideVehicles() {
       )}
       {Array.from({ length: POOL }, (_, i) => (
         <group key={`c${i}`} visible={false} ref={(el) => (chairs.current[i] = el)}>
-          <mesh ref={(el) => (hangers.current[i] = el)}>
-            <boxGeometry args={[0.05, 1, 0.05]} />
-            <meshStandardMaterial color="#333" />
-          </mesh>
-          <Box p={[0, 0, 0]} s={[1.1, 0.12, 0.6]} c="#ffb703" />
-          <Box p={[0, 0.35, -0.27]} s={[1.1, 0.6, 0.06]} c="#ffb703" />
-          <Box p={[0, -0.1, 0.32]} s={[1.1, 0.06, 0.06]} c="#333" />
+          <Chair color="#ffb703" />
         </group>
       ))}
     </group>
@@ -504,18 +636,15 @@ function Grounds({ dark }: { dark: boolean }) {
     // ticket booth + arch pillars
     out.push({ p: [-11, 1.2, 52], s: [3, 2.4, 2.4], c: "#f1faee" }, { p: [-11, 2.55, 52], s: [3.4, 0.3, 2.8], c: "#2a9d8f" });
     out.push({ p: [-6, 2.2, 46], s: [1, 4.4, 1], c: "#2a9d8f" }, { p: [6, 2.2, 46], s: [1, 4.4, 1], c: "#2a9d8f" }, { p: [0, 4.6, 46], s: [13, 1.6, 1], c: "#2a9d8f" });
-    // lift stations
-    for (const p of [LIFT.a, LIFT.b]) {
-      out.push({ p: [p.x, 3.2, p.z], s: [4, 0.3, 4], c: "#457b9d" });
-      for (const [dx, dz] of [[-1.8, -1.8], [1.8, -1.8], [-1.8, 1.8], [1.8, 1.8]]) out.push({ p: [p.x + dx, 1.6, p.z + dz], s: [0.2, 3.2, 0.2], c: "#457b9d" });
-    }
+    // (lift stations: see LiftStation)
     // perimeter hedge
     out.push({ p: [0, 0.6, -HD - 0.5], s: [2 * HW + 2, 1.2, 1], c: "#2d6a4f" }, { p: [-HW - 0.5, 0.6, 0], s: [1, 1.2, 2 * HD + 2], c: "#2d6a4f" }, { p: [HW + 0.5, 0.6, 0], s: [1, 1.2, 2 * HD + 2], c: "#2d6a4f" });
     // ride / exit mats
     const mat = (r: [number, number, number, number], c: string) => out.push({ p: [(r[0] + r[1]) / 2, 0.03, (r[2] + r[3]) / 2], s: [r[1] - r[0], 0.02, r[3] - r[2]], c });
-    for (const r of PARK_RIDES) {
-      mat(r.a.mat as [number, number, number, number], "#e09f3e");
-      mat(r.b.mat as [number, number, number, number], "#e09f3e");
+    for (const [i, r] of PARK_RIDES.entries()) {
+      const y = i === 1 ? 0.13 : 0.03; // lift mats lie on the station platform
+      for (const m of [r.a.mat, r.b.mat] as [number, number, number, number][])
+        out.push({ p: [(m[0] + m[1]) / 2, y, (m[2] + m[3]) / 2], s: [m[1] - m[0], 0.02, m[3] - m[2]], c: "#e09f3e" });
     }
     mat(PARK_EXIT_MAT as [number, number, number, number], "#3bb273");
     return Object.assign(out, { blooms });
@@ -605,8 +734,8 @@ function Signs() {
       {s([0, 1.6, 59.4], "▼ 한빛초등학교로 돌아가기", "#3bb273", "#ffffff", 4.6)}
       {s([12, 2.4, 53.2], "코끼리열차 타기 → 동물원 (8초 안에 친구도 함께)", "#e09f3e", "#ffffff", 6.4)}
       {s([40, 2.4, -12.3], "코끼리열차 타기 → 정문 (8초 안에 친구도 함께)", "#e09f3e", "#ffffff", 6.2)}
-      {s([-14, 4, 37.4], "스카이리프트 타기 → 동물원 정상 (2인승)", "#457b9d", "#ffffff", 5.6)}
-      {s([64, 4, -43.2], "스카이리프트 타기 → 호숫가 (2인승)", "#457b9d", "#ffffff", 5)}
+      {s([-14, 5.6, 37.4], "스카이리프트 타기 → 동물원 정상 (2인승)", "#457b9d", "#ffffff", 5.6)}
+      {s([64, 5.6, -43.2], "스카이리프트 타기 → 호숫가 (2인승)", "#457b9d", "#ffffff", 5)}
       {s([LAKE.x, 1.2, LAKE.z + LAKE.r + 1.2], "대공원 호수 · 둘레길", "#e0fbfc", "#1d3557", 4)}
       {s([45, 2.2, -13.6], "동물원", "#ffb703", "#3d2c00", 3)}
       {PENS.map((p) => s([(p.rect[0] + p.rect[1]) / 2, 1.8, p.rect[3] + 0.25], p.name, "#fff3b0", "#7a4b00", Math.max(1.6, p.name.length * 0.55)))}
