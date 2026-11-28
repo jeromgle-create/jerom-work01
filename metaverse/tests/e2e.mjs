@@ -1,7 +1,7 @@
 // Browser end-to-end checks with Playwright (software WebGL). Needs a running server.
 //   MV_URL=http://localhost:4100 node tests/e2e.mjs            # all sections
 //   node tests/e2e.mjs stairs rides                             # only some
-// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe, viewpad
+// Sections: sync, stairs, rides, click, pan, zoom, map, voice, cafe, viewpad, loops
 // Note: software rendering runs at a few fps, so walking is slow; timeouts are generous.
 import * as L from "../shared/layout.js";
 import { check, done, join, launch, order, pan, place, pos, rides, round, selfId, teleport, touch, walkUntil, zoom } from "./lib.mjs";
@@ -292,6 +292,29 @@ if (on("cafe")) {
     await b.waitForTimeout(2500);
     await b.screenshot({ path: `${shots}/cafe-wide.png` });
   }
+  await closeAll();
+}
+
+if (on("loops")) {
+  console.log("\n# round trips: the lake loop train and a swan boat bring you back to where you got on");
+  const a = await open("뱃놀이");
+  for (const name of ["오리배", "호수 순환열차"]) {
+    const i = L.PARK_RIDES.findIndex((r) => r.name === name);
+    const [x0, x1, z0, z1] = L.PARK_RIDES[i].a.mat;
+    await teleport(a, P + (x0 + x1) / 2, z1 + 1.2);
+    await a.waitForTimeout(3000);
+    await a.keyboard.down("w");
+    await a.waitForFunction(() => !!window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 30000 }).catch(() => {});
+    await a.keyboard.up("w");
+    const r = (await rides(a))[await selfId(a)];
+    const hud = await place(a);
+    await a.waitForFunction(() => !window.__mvDebug.rides()[window.__mvVoice.selfId], null, { timeout: 120000 }).catch(() => {});
+    await a.waitForTimeout(1000);
+    const p = await pos(a);
+    const land = L.PARK_RIDES[i].a.land;
+    check(r?.ride === i && Math.hypot(p.x - (P + land[0]), p.z - land[1]) < 2.5, `${name}: board, go round, step off at the same stop`, `${hud} → ${(p.x - P).toFixed(1)},${p.z.toFixed(1)}`);
+  }
+  check((await a.evaluate(() => window.__mvDebug.corrections())) === 0, "round trips: the server never pulled the rider back");
   await closeAll();
 }
 

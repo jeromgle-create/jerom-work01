@@ -125,6 +125,8 @@ export const PARK = { id: "park", cx: 2400, cz: 0, minX: 2330, maxX: 2470, minZ:
 /** Mat just inside the school's main gate. */
 export const PARK_GATE_MAT = { minX: -7, maxX: -3, minZ: 32.9, maxZ: 34.5 };
 const P = (x) => PARK.cx + x;
+const LOOP_STOP = { mat: [-4.4, -1.6, 28.6, 30], land: [0.6, 31.2] };
+const BOAT_DOCK = { mat: [6.6, 9.4, 20.7, 22], land: [11.2, 22.6] };
 /** Park quick-travel stations (local coords): stepping on a mat rides to the other end. */
 export const PARK_RIDES = [
   { name: "코끼리열차", a: { mat: [10, 14, 53.5, 55], land: [12, 57] }, b: { mat: [38, 42, -12, -10.5], land: [40, -8] } },
@@ -132,6 +134,11 @@ export const PARK_RIDES = [
   // step off beside the line the chairs arrive on (see LIFT_LINE: up line on the left of a→b).
   // a = (-14, 37.5), b = (64, -46), left of a→b ≈ (0.73, 0.68), lines 1.1 m from the axis.
   { name: "스카이리프트", a: { mat: [-14.3, -12.1, 37.6, 38.9], land: [-15.9, 35.7] }, b: { mat: [62.1, 64.3, -47.4, -46.1], land: [65.9, -44.2] } },
+  // Round trips (loop: true): board and get off at the same stop, so there is only station a.
+  // Lake loop train: its stop is on the south-west of the train road; the loop goes all the way round.
+  { name: "호수 순환열차", stop: "정류장", loop: true, a: LOOP_STOP, b: LOOP_STOP },
+  // Swan boats: the dock is on the south shore; a boat goes once round the lake and back.
+  { name: "오리배", stop: "선착장", loop: true, a: BOAT_DOCK, b: BOAT_DOCK },
 ];
 export const PARK_EXIT_MAT = [-2, 2, 58.3, 60.5];
 
@@ -250,6 +257,29 @@ const TRAIN_PATH = (() => {
   return polyline(pts);
 })();
 const LIFT_PATH = polyline([LIFT_LINE.a, LIFT_LINE.b]);
+/** Lake loop train: once all the way round the train road, from its stop back to it. */
+const LOOP_A0 = 1.95; // loop angle of the stop (south-west)
+const LOOP_PTS = (() => {
+  const pts = [];
+  for (let k = 0; k <= 160; k++) {
+    const a = LOOP_A0 - (k / 160) * Math.PI * 2; // same way round as the elephant train
+    pts.push([LAKE_LOOP.x + Math.cos(a) * LAKE_LOOP.rx, LAKE_LOOP.z + Math.sin(a) * LAKE_LOOP.rz]);
+  }
+  return pts;
+})();
+const LOOP_LEN = LOOP_PTS.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - LOOP_PTS[i][0], p[1] - LOOP_PTS[i][1]), 0);
+const LOOP_PATH = polyline(LOOP_PTS);
+/** Swan boat: from the dock out onto the lake, once round (radius BOAT_R), and back to the dock. */
+const LAKE_C = { x: 8, z: 4, r: 16 };
+export const BOAT_R = 10.5;
+const BOAT_PATH = polyline([
+  [LAKE_C.x, LAKE_C.z + 13],
+  ...Array.from({ length: 97 }, (_, k) => {
+    const a = Math.PI / 2 + (k / 96) * Math.PI * 2; // from the south point, anticlockwise on the map
+    return [LAKE_C.x + Math.cos(a) * BOAT_R, LAKE_C.z + Math.sin(a) * BOAT_R];
+  }),
+  [LAKE_C.x, LAKE_C.z + 13],
+]);
 /** Ride specs: index matches PARK_RIDES. Durations in ms. */
 // Shared vehicles: the first rider opens a vehicle that waits `boardWait` ms at the station; friends who
 // step on the same mat meanwhile take the next seats. Seats fill car by car, two per car.
@@ -268,7 +298,12 @@ export const RIDES = [
     seatsPerCar: 2,
     boardWait: 4000,
   },
+  // Round trips: a parked vehicle always waits at the stop (`parked`); cars sit 3.4 m apart (`gap`).
+  { name: "호수 순환열차", duration: 30000, vehicle: "train", sample: LOOP_PATH, height: () => 0.3, capacity: 6, seatsPerCar: 2, boardWait: 8000, gap: 3.4 / LOOP_LEN, parked: true },
+  { name: "오리배", duration: 26000, vehicle: "boat", sample: BOAT_PATH, height: () => 0.2, capacity: 2, seatsPerCar: 2, boardWait: 5000, parked: true },
 ];
+/** Fraction of the route between two cars of a ride's vehicle. */
+export const carGap = (ride) => RIDES[ride].gap ?? CAR_GAP;
 /** Train cars trail the head car by this fraction of the route. */
 export const CAR_GAP = 0.04;
 const SEAT_SIDE = 0.38;
@@ -291,10 +326,10 @@ export function ridePose(ride, dir, u) {
 /** Car index of a seat (0 = head car). */
 export const seatCar = (ride, seat) => Math.floor(seat / RIDES[ride].seatsPerCar);
 /** A rider is done when their own car reaches the end of the route. */
-export const seatEndU = (ride, seat) => 1 + seatCar(ride, seat) * CAR_GAP;
+export const seatEndU = (ride, seat) => 1 + seatCar(ride, seat) * carGap(ride);
 /** World pose of a rider in a given seat: their car's pose, shifted left/right within the car. */
 export function seatPose(ride, dir, u, seat) {
-  const p = ridePose(ride, dir, u - seatCar(ride, seat) * CAR_GAP);
+  const p = ridePose(ride, dir, u - seatCar(ride, seat) * carGap(ride));
   const side = (seat % RIDES[ride].seatsPerCar === 0 ? -1 : 1) * SEAT_SIDE;
   return { ...p, x: p.x + Math.cos(p.ry) * side, z: p.z - Math.sin(p.ry) * side };
 }
@@ -373,7 +408,7 @@ export const PORTALS = (() => {
   out.push({ from: "park", minX: P(ex0), maxX: P(ex1), minZ: ez0, maxZ: ez1, to: { x: -5, z: 31.4, ry: Math.PI }, label: "한빛초등학교로", kind: "exit" });
   // rides inside the park (both directions)
   for (const r of PARK_RIDES)
-    for (const [from, to, dir] of [[r.a, r.b, "ab"], [r.b, r.a, "ba"]]) {
+    for (const [from, to, dir] of r.loop ? [[r.a, r.a, "ab"]] : [[r.a, r.b, "ab"], [r.b, r.a, "ba"]]) {
       const [x0, x1, z0, z1] = from.mat;
       out.push({ from: "park", minX: P(x0), maxX: P(x1), minZ: z0, maxZ: z1, to: { x: P(to.land[0]), z: to.land[1], ry: Math.PI }, label: r.name, kind: "ride", ride: PARK_RIDES.indexOf(r), dir });
     }

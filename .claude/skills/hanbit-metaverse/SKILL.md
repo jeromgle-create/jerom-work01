@@ -62,6 +62,15 @@ it proves every room is still reachable.
 (stairs and portals are generated). A new building also needs a campus door in `CAMPUS_DOORS` and a
 building mesh + collider in `School.tsx`. Mark ground floors `exit: true`.
 
+**Round-trip rides** — `PARK_RIDES` entries with `loop: true` (and `b` = `a`): one station, one
+portal (`ab` only; the server turns `ba` into `ab`), you land back at the stop. `RIDES` entries add
+`parked: true` (RideVehicles always shows one vehicle waiting at the stop when none is boarding) and
+optionally `gap` (car spacing as a fraction of the route; use `carGap(ride)`, never `CAR_GAP`
+directly, for long routes). Current: 호수 순환열차 (ride 2, `LOOP_PATH` = the whole train-road ellipse
+from angle `LOOP_A0`; it replaced the decorative circling train) and 오리배 (ride 3, vehicle "boat",
+`BOAT_PATH` = dock → circle `BOAT_R` → dock; decorative boats stay inside / outside that circle).
+New ride indices must be appended (indices are used by the server and tests).
+
 **Sky lift** — one cable loop defined in `shared/layout.js` (`LIFT_LINE`: `station` cable height,
 `ramp` fraction, `side` = line offset, `hang` = cable → seated feet; `liftCableY(k)`, `LIFT_LEFT`). Riders
 use `ridePose` with `lane`: a→b on the left line, b→a on the right, height = cable − hang, so they board
@@ -124,7 +133,7 @@ bash tests/run-all.sh stairs rides    # sim + bots + chosen e2e sections
 MV_URL=https://jerom-world.onrender.com node tests/live.mjs   # against production (no teleport there)
 ```
 
-`tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice cafe viewpad`. Also look at screenshots
+`tests/e2e.mjs` sections: `sync stairs rides click pan zoom map voice cafe viewpad loops`. Also look at screenshots
 (Playwright `page.screenshot`, phone emulation with `devices['iPhone 13']`) for visual changes —
 layout bugs (overlapping HUD, labels, occlusion) only show up visually.
 

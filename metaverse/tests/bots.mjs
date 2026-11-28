@@ -90,6 +90,19 @@ const [c1, c2, c3] = [await bot("C1", top.x, top.z), await bot("C2", top.x + 0.5
 await wait(300);
 const [l1, l2, l3] = [await ask(c1, { ride: 1, dir: "ba" }), await ask(c2, { ride: 1, dir: "ba" }), await ask(c3, { ride: 1, dir: "ba" })];
 check(l1.vehicle === l2.vehicle && l3.ok && l3.vehicle !== l1.vehicle, "ride: lift chairs seat two; the third rider gets the next chair");
+// round trips: lake loop train and swan boats board and land at the same stop
+for (const name of ["호수 순환열차", "오리배"]) {
+  const i = L.PARK_RIDES.findIndex((r) => r.name === name);
+  const s = station(i, "a");
+  const b1 = await bot(`R${i}`, s.x, s.z);
+  await wait(300);
+  const r = await ask(b1, { ride: i, dir: "ba" });
+  const portals = L.PORTALS.filter((p) => p.kind === "ride" && p.ride === i);
+  const land = portals[0]?.to;
+  const back = land && Math.hypot(land.x - s.x, land.z - s.z) < 6;
+  const end = L.ridePose(i, "ab", 1), start = L.ridePose(i, "ab", 0);
+  check(r.ok && r.dir === "ab" && portals.length === 1 && back && Math.hypot(end.x - start.x, end.z - start.z) < 0.5, `ride: ${name} goes once round and comes back to its stop`, `${r.ok} ${r.dir} portals=${portals.length}`);
+}
 bots.forEach((b) => b.s.close());
 bots.length = 0;
 
